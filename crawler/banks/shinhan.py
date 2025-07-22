@@ -5,11 +5,13 @@ from utils.enums import Currency, Bank
 from interfaces.bank_interface import BankCrawler
 from dto.exchange_rate_dto import ExchangeRateDTO
 
-class get_shinhan(BankCrawler):
+DATETIME_FORMAT = "%Y.%m.%d %H:%M:%S"
+
+class ShinhanCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.SHINHAN
     
-    def get_datas(self) -> ExchangeRateDTO:
+    def get_datas(self) -> list[ExchangeRateDTO]:
         url = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
 
         payload = {
@@ -41,32 +43,38 @@ class get_shinhan(BankCrawler):
             # 고시시간
             date_str = data["dataBody"]["고시일자_display"]
             time_str = data["dataBody"]["고시시간_display"]
-            datetime_str = f"{date_str} {time_str}"
             
-            timestamp = datetime.strptime(datetime_str, "%Y.%m.%d %H:%M:%S")
+            datetime_str = f"{date_str} {time_str}"
+            timestamp = datetime.strptime(datetime_str, DATETIME_FORMAT)
 
             # 통화
             rates = data["dataBody"]["R_RIBF3733_1"] # request의 통화 정보 리스트
             targets = set(c.value for c in Currency) # rates에서 찾아야 할 target 통화
-            dto = [] # 저장할 dto
+            
+            dto: list[ExchangeRateDTO] = []
 
             for rate in rates:
-                code = rate["통화CODE"]
-                
-                if code in targets :
-                    dto.append(ExchangeRateDTO(
-                        bank=Bank.SHINHAN,
-                        currency=Currency(code),
-                        base_rate=float(rate["매매기준환율"]),
-                        buy_rate=float(rate["전신환매도환율"]),
-                        sell_rate=float(rate["전신환매입환율"]),
-                        timestamp=timestamp,
-                        created_at=datetime.now().replace(microsecond=0)
-                    ))
+                try :
+                    code = rate["통화CODE"]
+                    
+                    if code in targets :
+                        dto.append(ExchangeRateDTO(
+                            bank = Bank.SHINHAN,
+                            currency = Currency(code),
+                            base_rate = float(rate["매매기준환율"]),
+                            buy_rate = float(rate["전신환매도환율"]),
+                            sell_rate = float(rate["전신환매입환율"]),
+                            timestamp = timestamp,
+                            created_at = datetime.now().replace(microsecond=0)
+                        ))
+
+                except Exception as e:
+                    print(f"[WARN] 신한은행 {code} 환율 파싱 실패: {e}")
+                    continue
 
             return dto
 
         except Exception as e:
-            print(f"[ERROR] get_shinhan 실패: {e}")
+            print(f"[ERROR] ShinhanCrawler 실패: {e}")
             
             return []
