@@ -6,5 +6,5 @@ class BankCrawler(Protocol):
     def get_bank(self) -> Bank:
         ...
 
-    def get_datas(self) -> ExchangeRateDTO:
+    def get_datas(self) -> list[ExchangeRateDTO]:
         ...
