@@ -7,14 +7,16 @@ from dto.exchange_rate_dto import ExchangeRateDTO
 
 DATETIME_FORMAT = "%Y.%m.%d %H:%M:%S"
 
+URL = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
+
 class ShinhanCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.SHINHAN
     
     def get_datas(self) -> list[ExchangeRateDTO]:
-        url = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
+        today = datetime.now()        
 
-        payload = {
+        PAYLOAD = {
             "dataBody": {
                 "ricInptRootInfo": {
                     "serviceType": "GU",
@@ -24,7 +26,7 @@ class ShinhanCrawler(BankCrawler):
                     "isRule": "N"
                 },
                 "조회구분": "",
-                "조회일자": datetime.now().strftime("%Y%m%d"),
+                "조회일자": today.strftime("%Y%m%d"),
                 "고시회차": ""
             },
             "dataHeader": {
@@ -36,7 +38,7 @@ class ShinhanCrawler(BankCrawler):
         }
 
         try:
-            res = requests.post(url, json=payload)
+            res = requests.post(URL, json=PAYLOAD)
             res.raise_for_status()
             data = res.json()
         
@@ -65,7 +67,7 @@ class ShinhanCrawler(BankCrawler):
                             buy_rate = float(rate["전신환매도환율"]),
                             sell_rate = float(rate["전신환매입환율"]),
                             timestamp = timestamp,
-                            created_at = datetime.now().replace(microsecond=0)
+                            created_at = today.replace(microsecond=0)
                         ))
 
                 except Exception as e:
