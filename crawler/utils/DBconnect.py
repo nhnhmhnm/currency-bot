@@ -11,26 +11,27 @@ def get_fk_id(cursor, table: str, code: str) -> int:
 
     if result is None:
         raise ValueError(f"{table}에서 code='{code}'를 찾을 수 없습니다.")
+    
     return result[0]
 
 def insert_rate(dto: ExchangeRateDTO):
     try:
         with mysql.connector.connect(**DB_CONFIG) as conn:
             with conn.cursor() as cursor:
-                # bank_id, currency_id 조회
+                # 외래키 조회
                 bank_id = get_fk_id(cursor, "banks", dto.bank.value)
                 currency_id = get_fk_id(cursor, "currencies", dto.currency.value)
 
-                created_at = datetime.now()
-
                 # INSERT
                 sql = """
-                    INSERT INTO exchange_rates (bank_id, currency_id, base_rate, buy_rate, sell_rate, timestamp, created_at)
+                    INSERT INTO exchange_rates_test (
+                        bank_id, currency_id, base_rate, buy_rate, sell_rate, timestamp, created_at
+                    )
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE 
-                        base_rate = VALUES(base_rate), 
-                        buy_rate = VALUES(buy_rate), 
-                        sell_rate = VALUES(sell_rate)
+                    ON DUPLICATE KEY UPDATE
+                        bank_id = VALUES(bank_id),
+                        currency_id = VALUES(currency_id),
+                        timestamp = VALUES(timestamp)
                 """
                 cursor.execute(sql, (
                     bank_id,
@@ -43,7 +44,7 @@ def insert_rate(dto: ExchangeRateDTO):
                 ))
                 conn.commit()
 
-                print(f"[DB] 저장 성공 : {dto.bank.value} {dto.currency.value} {dto.base_rate} {created_at}")
+                print(f"[DB] 저장 성공 : {dto.bank.value} {dto.currency.value} {dto.base_rate} {dto.created_at}")
 
     except Exception as e:
         print(f"[DB ERROR] {e}")
