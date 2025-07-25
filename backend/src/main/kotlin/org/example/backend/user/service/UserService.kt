@@ -2,9 +2,11 @@ package org.example.backend.user.service
 
 import jakarta.transaction.Transactional
 import org.example.backend.user.domain.User
+import org.example.backend.user.dto.UserLoginRequest
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
 import org.example.backend.user.repository.UserRepository
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 
@@ -30,13 +32,24 @@ class UserService (
     val savedUser = userRepository.save(user)
 
     return UserSignupResponse(
-      id = savedUser.id!!,
+      id = savedUser.id ?: throw IllegalStateException("ID 생성 실패"),
       device = savedUser.device,
       name = savedUser.name,
       phone = savedUser.phone,
       type = savedUser.type,
-      isActive = savedUser.isActive ?: true,
+      isActive = savedUser.isActive,
       createdAt = savedUser.createdAt
     )
+  }
+
+  fun login(request: UserLoginRequest): User {
+    val user = userRepository.findByDevice(request.device)
+      ?: throw java.lang.IllegalArgumentException("존재하지 않는 사용자입니다")
+
+    if (!passwordEncoder.matches(request.password, user.password)) {
+      throw IllegalArgumentException("비밀번호 불일치")
+    }
+
+    return user
   }
 }

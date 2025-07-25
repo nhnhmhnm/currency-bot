@@ -9,6 +9,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import org.example.backend.user.type.UserType
+import org.springframework.data.annotation.CreatedDate
 import java.time.LocalDateTime
 
 @Entity
@@ -34,9 +35,10 @@ class User (
   @Column(name = "type", nullable = false)
   val type: UserType,
 
-  @Column(name = "isActive")
-  val isActive: Boolean? = true,
+  @Column(name = "is_active", nullable = false)
+  var isActive: Boolean = true,
 
-  @Column(name = "created_at")
+  @CreatedDate
+  @Column(name = "created_at", updatable = false)
   val createdAt: LocalDateTime = LocalDateTime.now(),
 )
