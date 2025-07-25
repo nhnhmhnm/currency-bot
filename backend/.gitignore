@@ -38,3 +38,6 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+## local DB
+scr/main/resources/application-local.ymlsrc/main/resources/application-local.yml

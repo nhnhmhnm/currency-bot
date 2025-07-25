@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: backend
+
+  config:
+    import: optional:application-local.yml
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/yourdb?serverTimezone=Asia/Seoul
+    username: youruser
+    password: yourpw
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+jwt:
+  secret: your-secret-key
+  expiration: 3600000  # milliseconds (1 hour)

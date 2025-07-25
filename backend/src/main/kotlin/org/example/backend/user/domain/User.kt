@@ -18,7 +18,7 @@ class User (
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   val id: Long? = null,
 
-  @Column(name = "device", nullable = false)
+  @Column(name = "device", nullable = false, unique = true)
   val device: String,
 
   @Column(name = "password", nullable = false)
