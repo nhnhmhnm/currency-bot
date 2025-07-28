@@ -21,6 +21,7 @@ class SecurityConfig {
       .authorizeHttpRequests {
         it
           .requestMatchers(HttpMethod.POST,"/api/user/signup").permitAll()
+          .requestMatchers(HttpMethod.POST, "/api/user/login").permitAll()
           .anyRequest().authenticated()
       }
     return http.build()
