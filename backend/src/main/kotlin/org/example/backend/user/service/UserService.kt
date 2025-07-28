@@ -7,6 +7,7 @@ import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.user.domain.User
 import org.example.backend.user.dto.UserLoginRequest
+import org.example.backend.user.dto.UserMeResponse
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
 import org.example.backend.user.repository.UserRepository
@@ -64,5 +65,13 @@ class UserService (
     redisTokenService.saveToken(user.id!!, token, expiration)
 
     return token
+  }
+
+  fun getMyInfo(userId: Long): UserMeResponse {
+    val user = userRepository.findById(userId)
+      .orElseThrow{ IllegalArgumentException("존재하지 않는 사용자") }
+
+    return UserMeResponse(userId, user.device, user.name, user.phone,
+      user.type, user.isActive, user.createdAt)
   }
 }

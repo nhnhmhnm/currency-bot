@@ -1,11 +1,15 @@
 package org.example.backend.user.controller
 
+import org.example.backend.user.domain.User
 import org.example.backend.user.dto.UserLoginRequest
+import org.example.backend.user.dto.UserMeResponse
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
 import org.example.backend.user.service.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -26,5 +30,16 @@ class UserController (
   fun login(@RequestBody request: UserLoginRequest): ResponseEntity<String> {
     val token = userService.login(request)
     return ResponseEntity.ok(token)
+  }
+
+  @GetMapping("/me")
+  fun getMyInfo(): ResponseEntity<UserMeResponse> {
+    // SecurityContext 에서 userId 꺼냄
+    val authentication = SecurityContextHolder.getContext().authentication
+    val user = authentication.principal as User
+    val userId = user.id ?: throw RuntimeException("UserId not found")
+
+    val userInfo = userService.getMyInfo(userId)
+    return ResponseEntity.ok(userInfo)
   }
 }
