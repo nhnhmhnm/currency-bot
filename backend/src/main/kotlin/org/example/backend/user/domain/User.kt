@@ -9,11 +9,10 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import org.example.backend.user.type.UserType
-import org.springframework.data.annotation.CreatedDate
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "user")
+@Table(name = "`user`")
 class User (
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -38,7 +37,6 @@ class User (
   @Column(name = "is_active", nullable = false)
   var isActive: Boolean = true,
 
-  @CreatedDate
   @Column(name = "created_at", updatable = false)
   val createdAt: LocalDateTime = LocalDateTime.now(),
 )

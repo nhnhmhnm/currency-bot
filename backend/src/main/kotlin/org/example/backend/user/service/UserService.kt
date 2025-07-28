@@ -1,12 +1,13 @@
 package org.example.backend.user.service
 
 import jakarta.transaction.Transactional
+import org.example.backend.exception.ErrorCode
+import org.example.backend.exception.UserException
 import org.example.backend.user.domain.User
-import org.example.backend.user.dto.UserLoginRequest
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
 import org.example.backend.user.repository.UserRepository
-import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.http.HttpStatus
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 
@@ -18,7 +19,7 @@ class UserService (
   @Transactional
   fun createUser(request: UserSignupRequest): UserSignupResponse {
     if (userRepository.existsByDevice(request.device)) {
-      throw IllegalArgumentException("이미 등록된 Device입니다.")
+      throw UserException(HttpStatus.BAD_REQUEST, ErrorCode.DUPLICATED_USER_DEVICE)
     }
 
     val user = User(
@@ -32,7 +33,7 @@ class UserService (
     val savedUser = userRepository.save(user)
 
     return UserSignupResponse(
-      id = savedUser.id ?: throw IllegalStateException("ID 생성 실패"),
+      id = savedUser.id ?: throw UserException(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.FAILED_TO_CREATE_USER_ID),
       device = savedUser.device,
       name = savedUser.name,
       phone = savedUser.phone,
@@ -40,16 +41,5 @@ class UserService (
       isActive = savedUser.isActive,
       createdAt = savedUser.createdAt
     )
-  }
-
-  fun login(request: UserLoginRequest): User {
-    val user = userRepository.findByDevice(request.device)
-      ?: throw java.lang.IllegalArgumentException("존재하지 않는 사용자입니다")
-
-    if (!passwordEncoder.matches(request.password, user.password)) {
-      throw IllegalArgumentException("비밀번호 불일치")
-    }
-
-    return user
   }
 }

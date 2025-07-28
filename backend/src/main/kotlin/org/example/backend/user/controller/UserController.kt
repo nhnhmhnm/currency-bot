@@ -18,6 +18,6 @@ class UserController (
   @PostMapping("/signup")
   fun signup(@RequestBody request: UserSignupRequest): ResponseEntity<UserSignupResponse> {
     val response = userService.createUser(request)
-    return ResponseEntity.ok(response)
+    return ResponseEntity.status(HttpStatus.CREATED).body(response)
   }
 }

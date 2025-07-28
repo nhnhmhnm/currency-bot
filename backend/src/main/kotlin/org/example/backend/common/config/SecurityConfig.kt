@@ -1,8 +1,8 @@
 package org.example.backend.common.config
 
-import org.example.backend.common.jwt.JwtTokenProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -12,17 +12,15 @@ import org.springframework.security.web.SecurityFilterChain
 
 @Configuration
 @EnableWebSecurity
-class SecurityConfig (
-  private val jwtTokenProvider: JwtTokenProvider
-){
+class SecurityConfig {
   @Bean
   fun filterChain(http: HttpSecurity): SecurityFilterChain {
     http
-      .csrf { it.disable() }
+      .csrf { it.disable() } // jwt 사용 시 CSRF 불 필요
       .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
       .authorizeHttpRequests {
         it
-          .requestMatchers("/api/user/signup").permitAll()
+          .requestMatchers(HttpMethod.POST,"/api/user/signup").permitAll()
           .anyRequest().authenticated()
       }
     return http.build()
