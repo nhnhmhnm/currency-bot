@@ -1,15 +1,15 @@
-from utils.enums import Bank, Currency
 from utils.DBconnect import insert_rate
 from interfaces.bank_interface import BankCrawler
 from banks.shinhan import ShinhanCrawler
-from banks.ibk import get_ibk
+from banks.ibk import IBKCrawler
 from banks.sc import ScCrawler
 from banks.hana import HanaCrawler
 
 crawlers: list[BankCrawler] = [
-    ShinhanCrawler(),
+    HanaCrawler(),
+    IBKCrawler(),
     ScCrawler(),
-    HanaCrawler()
+    ShinhanCrawler()
 ]
 
 def crawl_all():

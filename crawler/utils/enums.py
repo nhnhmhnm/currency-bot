@@ -1,13 +1,13 @@
 from enum import Enum
 
 class Bank(str, Enum):
-    IBK = "IBK"
-    SHINHAN = "SHINHAN"
     HANA = "HANA"
-    SC = "SC"
-    WOORI = "WOORI"
+    IBK = "IBK"
     KB = "KB"
     NH = "NH"
+    SC = "SC"
+    SHINHAN = "SHINHAN"
+    WOORI = "WOORI"
     
 class Currency(str, Enum):
     USD = "USD"
