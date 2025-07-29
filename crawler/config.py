@@ -1,8 +1,8 @@
 DB_CONFIG = {
     "host": "localhost",
-    "user": "root",
-    "password": "root",
-    "database": "exchange_tracker",
+    "user": "cuunit",
+    "password": "9999",
+    "database": "cuunit",
     "charset": "utf8mb4",
     "use_unicode": True
     }
