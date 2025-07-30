@@ -1,7 +1,9 @@
 package org.example.backend.user.domain
 
 import jakarta.persistence.*
+import org.example.backend.finance.domain.Currency
 import org.example.backend.enums.WalletHistoryType
+import org.example.backend.exchange.domain.ExchangeOrder
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
