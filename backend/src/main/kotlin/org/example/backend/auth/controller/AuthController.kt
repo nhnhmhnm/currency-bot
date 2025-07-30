@@ -9,6 +9,7 @@ import org.example.backend.common.jwt.JwtTokenProvider
 import org.example.backend.user.service.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -27,16 +28,27 @@ class AuthController (
     return ResponseEntity.ok(token)
   }
 
+  @PostMapping("/logout")
+  fun logout(): ResponseEntity<Unit> {
+    val authentication = SecurityContextHolder.getContext().authentication
+    val userId = authentication.name.toLong()
+
+    redisTokenService.deleteAccessToken(userId)
+    redisTokenService.deleteRefreshToken(userId)
+
+    return ResponseEntity.noContent().build()
+  }
+
   @PostMapping("/reissue")
   fun reissueToken(@RequestBody request: RefreshTokenRequest)
   : ResponseEntity<TokenResponse> {
     val refreshToken = request.refreshToken
-    val userId = jwtTokenProvider.getUserId(refreshToken)
 
     // 유효성 검사
     if (!jwtTokenProvider.validateToken(refreshToken)) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
     }
+    val userId = jwtTokenProvider.getUserId(refreshToken)
 
     // Redis에서 refreshToken 일치 여부 확인
     val storedToken = redisTokenService.getRefreshToken(userId)

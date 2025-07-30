@@ -30,8 +30,8 @@ class UserController (
   fun getMyInfo(): ResponseEntity<UserMeResponse> {
     // SecurityContext 에서 userId 꺼냄
     val authentication = SecurityContextHolder.getContext().authentication
-    val user = authentication.principal as User
-    val userId = user.id ?: throw RuntimeException("UserId not found")
+
+    val userId = authentication.name.toLong()
 
     val userInfo = userService.getMyInfo(userId)
     return ResponseEntity.ok(userInfo)

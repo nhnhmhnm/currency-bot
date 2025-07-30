@@ -27,24 +27,9 @@ class JwtTokenProvider (
   // secretKey -> base64 decode -> HMAC-SHA256에 사용할 키 객체로 변환
   private val key by lazy { Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey)) }
 
-  // Access Token 생성
-  fun createAccessToken(userId: Long): String {
+  private fun createToken(userId: Long, expiration: Long): String {
     val now = Date()
-    val expiry = Date(now.time + accessExpiration)
-
-    return Jwts.builder()
-      .setSubject(userId.toString())                      // 사용자 고유 식별값
-      .setIssuedAt(now)                                   // 토큰 발급 시간
-      .setExpiration(expiry)                              // 만료 시간
-      .signWith(key, SignatureAlgorithm.HS256)  // 서명 알고리즘 + 키
-      .compact()                                          // 토큰 문자열 생성
-  }
-
-  // Refresh Token 생성
-  fun createRefreshToken(userId: Long): String {
-    val now = Date()
-    val expiry = Date(now.time + refreshExpiration)
-
+    val expiry = Date(now.time + expiration)
     return Jwts.builder()
       .setSubject(userId.toString())
       .setIssuedAt(now)
@@ -52,6 +37,12 @@ class JwtTokenProvider (
       .signWith(key, SignatureAlgorithm.HS256)
       .compact()
   }
+
+  // Access Token 생성
+  fun createAccessToken(userId: Long) = createToken(userId, accessExpiration)
+  // Refresh Token 생성
+  fun createRefreshToken(userId: Long) = createToken(userId, refreshExpiration)
+
 
   // 유효성 검사 (서명 확인 + 만료 여부)
   fun validateToken(token: String): Boolean {
@@ -61,7 +52,7 @@ class JwtTokenProvider (
         .build()
         .parseClaimsJws(token)
 
-      log.info("✅ Token valid. Subject=${claims.body.subject}, ExpiresAt=${claims.body.expiration}")
+      log.info("✅ Token valid. ExpiresAt=${claims.body.expiration}")
       true
     } catch (e: Exception) {
       log.warn("❌ JWT validation failed: ${e.message}")

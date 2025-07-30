@@ -53,7 +53,7 @@ class JwtAuthenticationFilter(
     // 6. 인증 객체 생성 (without UserDetails)
     val authorities = listOf(SimpleGrantedAuthority("ROLE_${user.type.name.uppercase()}"))
     val authToken = UsernamePasswordAuthenticationToken(
-      user,
+      userId.toString(),
       null,
       authorities
     ).apply { details = WebAuthenticationDetailsSource().buildDetails(request) }
