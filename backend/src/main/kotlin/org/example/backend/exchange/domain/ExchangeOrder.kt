@@ -1,10 +1,6 @@
 package org.example.backend.exchange.domain
 
 import jakarta.persistence.*
-import org.example.backend.user.domain.User
-import org.example.backend.finance.domain.Bank
-import org.example.backend.finance.domain.Currency
-import org.example.backend.finance.domain.ExchangeRate
 import org.example.backend.enums.OrderStatus
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -15,21 +11,17 @@ data class ExchangeOrder(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
-    val user: User,
+    @Column(name = "user_id", nullable = false)
+    val userId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bank_id")
-    val bank: Bank,
+    @Column(name = "bank_id", nullable = false)
+    val bankId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "from_currency_id")
-    val fromCurrency: Currency,
+    @Column(name = "from_currency_id", nullable = false)
+    val fromCurrency: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "to_currency_id")
-    val toCurrency: Currency,
+    @Column(name = "to_currency_id", nullable = false)
+    val toCurrency: Long,
 
     @Column(name = "from_amount", nullable = false)
     val fromAmount: BigDecimal,
@@ -39,10 +31,6 @@ data class ExchangeOrder(
 
     @Column(name = "exchange_rate")
     var exchangeRate: BigDecimal? = null,
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "exchange_rate_id")
-    val exchangeRateEntity: ExchangeRate,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

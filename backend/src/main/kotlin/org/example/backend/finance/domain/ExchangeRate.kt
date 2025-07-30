@@ -10,22 +10,20 @@ data class ExchangeRate(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "bank_id")
-    val bank: Bank,
+    @Column(name = "bank_id", nullable = false)
+    val bankId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "currency_id")
-    val currency: Currency,
+    @Column(name = "currency_id", nullable = false)
+    val currencyId: Long,
 
     @Column(name = "base_rate", nullable = false)
     val baseRate: BigDecimal,
 
     @Column(name = "buy_rate")
-    val buyRate: BigDecimal? = null,
+    val buyRate: BigDecimal,
 
     @Column(name = "sell_rate")
-    val sellRate: BigDecimal? = null,
+    val sellRate: BigDecimal,
 
     @Column(name = "notice_time", nullable = false)
     val noticeTime: LocalDateTime,

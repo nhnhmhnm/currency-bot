@@ -1,7 +1,6 @@
 package org.example.backend.user.domain
 
 import jakarta.persistence.*
-import org.example.backend.finance.domain.Currency
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -11,13 +10,11 @@ data class Wallet(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
-    val user: User,
+    @Column(name = "user_id")
+    val userId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "currency_id")
-    val currency: Currency,
+    @Column(name = "currency_id")
+    val currencyId: Long,
 
     val balance: BigDecimal = BigDecimal.ZERO,
 

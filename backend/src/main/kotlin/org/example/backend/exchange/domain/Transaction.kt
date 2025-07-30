@@ -1,29 +1,24 @@
 package org.example.backend.exchange.domain
 
 import jakarta.persistence.*
-import org.example.backend.user.domain.User
-import org.example.backend.user.domain.Wallet
 import org.example.backend.finance.domain.Currency
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "transactions")
+@Table(name = "transaction")
 data class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
-    val user: User,
+    @Column(name = "user_id", nullable = false)
+    val userId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "wallet_id")
-    val wallet: Wallet,
+    @Column(name = "wallet_id", nullable = false)
+    val walletId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id")
-    val order: ExchangeOrder,
+    @Column(name = "order_id")
+    val orderId: Long,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "from_currency_id")
