@@ -8,7 +8,7 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
-import org.example.backend.user.type.UserType
+import org.example.backend.enums.UserType
 import java.time.LocalDateTime
 
 @Entity

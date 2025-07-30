@@ -1,6 +1,6 @@
 package org.example.backend.user.dto
 
-import org.example.backend.user.type.UserType
+import org.example.backend.enums.UserType
 
 data class UserSignupRequest(
   val device: String,
