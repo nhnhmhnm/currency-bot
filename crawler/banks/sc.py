@@ -1,22 +1,23 @@
 import requests
+from decimal import Decimal
 from datetime import datetime
 from enum import Enum
 from utils.enums import Currency, Bank
 from interfaces.bank_interface import BankCrawler
 from dto.exchange_rate_dto import ExchangeRateDTO
 
-DATETIME_FORMAT = "%Y%m%d%H%M%S"
-
 class ScCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.SC
     
     def get_datas(self) -> list[ExchangeRateDTO]:
-        url = "https://www.standardchartered.co.kr/np/kr/pl/et/selectExchangeRateList"
-        
-        today = datetime.now()
+        DATETIME_FORMAT = "%Y%m%d%H%M%S"
 
-        payload = {
+        URL = "https://www.standardchartered.co.kr/np/kr/pl/et/selectExchangeRateList"
+        
+        today = datetime.now().replace(microsecond=0)
+
+        PAYLOAD = {
             "serviceID":"HP_FP_PR_ExchangeRate.selectExchangeRateList",
             "task":"com.scfirstbank.web.fp.pr.task.HP_FP_PR_ExchangeRateTask",
             "action":"selectExchangeRateList",
@@ -28,7 +29,7 @@ class ScCrawler(BankCrawler):
         }
 
         try:
-            res = requests.post(url, json=payload)
+            res = requests.post(URL, json=PAYLOAD)
             res.raise_for_status()
             data = res.json()
         
@@ -50,11 +51,11 @@ class ScCrawler(BankCrawler):
                         dto.append(ExchangeRateDTO(
                             bank = Bank.SC,
                             currency = Currency(code),
-                            base_rate = float(raw["TMP_RATE"]),
-                            buy_rate = float(raw["TTSALERATE"]),
-                            sell_rate = float(raw["TTBUYRATE"]),
-                            timestamp = timestamp,
-                            created_at = datetime.now().replace(microsecond=0)
+                            base_rate = Decimal(raw["TMP_RATE"].replace(",", "")),
+                            buy_rate = Decimal(raw["TTSALERATE"].replace(",", "")),
+                            sell_rate = Decimal(raw["TTBUYRATE"].replace(",", "")),
+                            notice_time = timestamp,
+                            created_at = today
                         ))
 
                     except Exception as e:

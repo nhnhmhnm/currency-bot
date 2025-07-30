@@ -1,20 +1,21 @@
 import requests
+from decimal import Decimal
 from datetime import datetime
 from enum import Enum
 from utils.enums import Currency, Bank
 from interfaces.bank_interface import BankCrawler
 from dto.exchange_rate_dto import ExchangeRateDTO
 
-DATETIME_FORMAT = "%Y.%m.%d %H:%M:%S"
-
-URL = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
-
 class ShinhanCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.SHINHAN
     
     def get_datas(self) -> list[ExchangeRateDTO]:
-        today = datetime.now()        
+        today = datetime.now().replace(microsecond=0)
+
+        DATETIME_FORMAT = "%Y.%m.%d %H:%M:%S"
+
+        URL = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
 
         PAYLOAD = {
             "dataBody": {
@@ -63,11 +64,11 @@ class ShinhanCrawler(BankCrawler):
                         dto.append(ExchangeRateDTO(
                             bank = Bank.SHINHAN,
                             currency = Currency(code),
-                            base_rate = float(rate["매매기준환율"]),
-                            buy_rate = float(rate["전신환매도환율"]),
-                            sell_rate = float(rate["전신환매입환율"]),
-                            timestamp = timestamp,
-                            created_at = today.replace(microsecond=0)
+                            base_rate = Decimal(rate["매매기준환율"]),
+                            buy_rate = Decimal(rate["전신환매도환율"]),
+                            sell_rate = Decimal(rate["전신환매입환율"]),
+                            notice_time = timestamp,
+                            created_at = today
                         ))
 
                 except Exception as e:

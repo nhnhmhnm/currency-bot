@@ -39,5 +39,8 @@ out/
 ### Kotlin ###
 .kotlin
 
-## local DB
+### local DB ###
 src/main/resources/application-local.yml
+
+### 민감 정보 파일 제외 ###
+application-secret.properties

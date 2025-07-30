@@ -1,13 +1,14 @@
+from decimal import Decimal
 from dataclasses import dataclass
-from utils.enums import Bank, Currency
 from datetime import datetime
+from utils.enums import Bank, Currency
 
 @dataclass
 class ExchangeRateDTO:
     bank: Bank
     currency: Currency
-    base_rate: float
-    buy_rate: float
-    sell_rate: float
-    timestamp: datetime
+    base_rate: Decimal 
+    buy_rate: Decimal 
+    sell_rate: Decimal 
+    notice_time: datetime
     created_at: datetime
