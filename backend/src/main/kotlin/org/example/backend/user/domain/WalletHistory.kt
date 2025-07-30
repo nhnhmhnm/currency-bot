@@ -1,8 +1,6 @@
 package org.example.backend.user.domain
 
 import jakarta.persistence.*
-import org.example.backend.order.domain.ExchangeOrder
-import org.example.backend.finance.domain.Currency
 import org.example.backend.enums.WalletHistoryType
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -13,17 +11,14 @@ data class WalletHistory(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "wallet_id")
-    val wallet: Wallet,
+    @Column(name = "wallet_id")
+    val walletId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "currency_id")
-    val currency: Currency,
+    @Column(name = "currency_id")
+    val currencyId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_id")
-    val order: ExchangeOrder? = null,
+    @Column(name = "order_id")
+    val orderId: Long,
 
     @Column(nullable = false)
     val amount: BigDecimal,
