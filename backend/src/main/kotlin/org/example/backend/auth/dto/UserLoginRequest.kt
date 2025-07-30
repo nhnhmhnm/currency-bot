@@ -1,4 +1,4 @@
-package org.example.backend.user.dto
+package org.example.backend.auth.dto
 
 data class UserLoginRequest(
   val device: String,

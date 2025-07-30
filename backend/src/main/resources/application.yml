@@ -25,4 +25,5 @@ spring:
 
 jwt:
   secret: ozc7WJTo0kzv4swf1e4iNSKqrUn0qHML7tMkPwwnBSQ= # base 64로 인코딩된 키
-  expiration: 1800000   # milliseconds (30 분)
+  access_expiration: 1800000    # milliseconds (30 분)
+  refresh_expiration: 604800000 # milliseconds (7 일)

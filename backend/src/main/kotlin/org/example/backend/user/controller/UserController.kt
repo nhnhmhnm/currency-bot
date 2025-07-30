@@ -1,7 +1,7 @@
 package org.example.backend.user.controller
 
 import org.example.backend.user.domain.User
-import org.example.backend.user.dto.UserLoginRequest
+import org.example.backend.auth.dto.UserLoginRequest
 import org.example.backend.user.dto.UserMeResponse
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
@@ -24,12 +24,6 @@ class UserController (
   fun signup(@RequestBody request: UserSignupRequest): ResponseEntity<UserSignupResponse> {
     val response = userService.createUser(request)
     return ResponseEntity.status(HttpStatus.CREATED).body(response)
-  }
-
-  @PostMapping("/login")
-  fun login(@RequestBody request: UserLoginRequest): ResponseEntity<String> {
-    val token = userService.login(request)
-    return ResponseEntity.ok(token)
   }
 
   @GetMapping("/me")

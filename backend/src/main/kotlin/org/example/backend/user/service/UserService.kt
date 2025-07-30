@@ -2,11 +2,12 @@ package org.example.backend.user.service
 
 import jakarta.transaction.Transactional
 import org.example.backend.common.jwt.JwtTokenProvider
-import org.example.backend.common.jwt.RedisTokenService
+import org.example.backend.auth.service.RedisTokenService
+import org.example.backend.auth.dto.TokenResponse
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.user.domain.User
-import org.example.backend.user.dto.UserLoginRequest
+import org.example.backend.auth.dto.UserLoginRequest
 import org.example.backend.user.dto.UserMeResponse
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
@@ -23,8 +24,11 @@ class UserService (
   private val jwtTokenProvider: JwtTokenProvider,
   private val redisTokenService: RedisTokenService,
 
-  @Value("\${jwt.expiration}")
-  private val expiration: Long
+  @Value("\${jwt.access_expiration}")
+  private val accessExpiration: Long,
+
+  @Value("\${jwt.refresh_expiration}")
+  private val refreshExpiration: Long
 ) {
   @Transactional
   fun createUser(request: UserSignupRequest): UserSignupResponse {
@@ -53,7 +57,7 @@ class UserService (
     )
   }
 
-  fun login(request: UserLoginRequest): String {
+  fun login(request: UserLoginRequest): TokenResponse {
     val user = userRepository.findByDevice(request.device)
       ?: throw IllegalArgumentException("존재하지 않는 사용자")
 
@@ -61,10 +65,15 @@ class UserService (
       throw IllegalArgumentException("비밀번호 불 일치")
     }
 
-    val token = jwtTokenProvider.createToken(user.id!!)
-    redisTokenService.saveToken(user.id!!, token, expiration)
+    // Token 생성
+    val accessToken = jwtTokenProvider.createAccessToken(user.id!!)
+    val refreshToken = jwtTokenProvider.createRefreshToken(user.id!!)
 
-    return token
+    // Redis 저장
+    redisTokenService.saveAccessToken(user.id!!, accessToken, jwtTokenProvider.getAccessExpiration())
+    redisTokenService.saveRefreshToken(user.id!!, refreshToken, jwtTokenProvider.getRefreshExpiration())
+
+    return TokenResponse(accessToken, refreshToken)
   }
 
   fun getMyInfo(userId: Long): UserMeResponse {
