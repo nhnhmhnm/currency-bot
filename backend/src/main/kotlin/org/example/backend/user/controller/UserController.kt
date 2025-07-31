@@ -1,7 +1,5 @@
 package org.example.backend.user.controller
 
-import org.example.backend.user.domain.User
-import org.example.backend.auth.dto.UserLoginRequest
 import org.example.backend.user.dto.UserMeResponse
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse

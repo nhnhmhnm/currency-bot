@@ -4,7 +4,6 @@ import org.example.backend.auth.dto.RefreshTokenRequest
 import org.example.backend.auth.dto.TokenResponse
 import org.example.backend.auth.dto.UserLoginRequest
 import org.example.backend.auth.service.RedisTokenService
-import org.example.backend.common.jwt.JwtHeaderUtil
 import org.example.backend.common.jwt.JwtTokenProvider
 import org.example.backend.user.service.UserService
 import org.springframework.http.HttpStatus

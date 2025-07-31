@@ -4,8 +4,10 @@ import org.example.backend.user.domain.Account
 import org.example.backend.user.dto.AccountRegistrationRequest
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
+import org.springframework.stereotype.Service
 import java.math.BigDecimal
 
+@Service
 class WalletServiceImpl(
   private val walletRepository: WalletRepository,
   private val accountRepository: AccountRepository

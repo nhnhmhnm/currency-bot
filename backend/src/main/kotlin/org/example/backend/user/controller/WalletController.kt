@@ -1,6 +1,5 @@
 package org.example.backend.user.controller
 
-import org.example.backend.user.domain.User
 import org.example.backend.user.dto.AccountRegistrationRequest
 import org.example.backend.user.service.WalletServiceImpl
 import org.springframework.http.ResponseEntity
