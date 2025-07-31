@@ -23,7 +23,7 @@ class Wallet(
     val balance: BigDecimal = BigDecimal.ZERO,
 
     @Column(name = "is_active")
-    val isActive: Boolean = false,
+    var isActive: Boolean = false,
 
     @Column(name = "created_at")
     val createdAt: LocalDateTime = LocalDateTime.now()
