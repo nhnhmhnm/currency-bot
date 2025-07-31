@@ -1,28 +1,26 @@
 package org.example.backend.user.domain
 
 import jakarta.persistence.*
-import org.example.backend.finance.domain.Currency
 import org.example.backend.enums.WalletHistoryType
-import org.example.backend.exchange.domain.ExchangeOrder
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @Entity
 @Table(name = "wallet_history")
-data class WalletHistory(
+class WalletHistory(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    val id: Long? = null,
 
-    @Column(name = "wallet_id")
+    @Column(name = "wallet_id", nullable = false)
     val walletId: Long,
 
-    @Column(name = "currency_id")
+    @Column(name = "currency_id", nullable = false)
     val currencyId: Long,
 
     @Column(name = "order_id")
-    val orderId: Long,
+    val orderId: Long? = null,
 
-    @Column(nullable = false)
+    @Column(name = "amount", nullable = false)
     val amount: BigDecimal,
 
     @Column(name = "balance_after", nullable = false)

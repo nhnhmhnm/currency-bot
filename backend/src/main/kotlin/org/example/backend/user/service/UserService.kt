@@ -8,10 +8,13 @@ import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.user.domain.User
 import org.example.backend.auth.dto.UserLoginRequest
+import org.example.backend.finance.repository.CurrencyRepository
+import org.example.backend.user.domain.Wallet
 import org.example.backend.user.dto.UserMeResponse
 import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
 import org.example.backend.user.repository.UserRepository
+import org.example.backend.user.repository.WalletRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -28,7 +31,11 @@ class UserService (
   private val accessExpiration: Long,
 
   @Value("\${jwt.refresh_expiration}")
-  private val refreshExpiration: Long
+  private val refreshExpiration: Long,
+
+
+  private val walletRepository: WalletRepository,
+  private val currencyRepository: CurrencyRepository
 ) {
   @Transactional
   fun createUser(request: UserSignupRequest): UserSignupResponse {
@@ -45,6 +52,16 @@ class UserService (
     )
 
     val savedUser = userRepository.save(user)
+
+    // 통화별 기본 wallet 생성
+    val currencies = listOf("KRW", "USD", "JPY")
+    val wallets = currencies.map { code ->
+      val currency = currencyRepository.findByCode(code) ?: throw IllegalArgumentException("잘못된 통화 코드")
+
+      Wallet(userId = savedUser.id!!, currencyId = currency.id!!, isActive = false)
+    }
+
+    walletRepository.saveAll(wallets)
 
     return UserSignupResponse(
       id = savedUser.id ?: throw UserException(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.FAILED_TO_CREATE_USER_ID),

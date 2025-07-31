@@ -4,5 +4,5 @@ import org.example.backend.finance.domain.ExchangeRate
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface ExchangeRateRepository : JpaRepository<ExchangeRate, Long> {
-    fun findRecentRateByCurrencyCode(currencyCode: String): List<ExchangeRate>
+    fun findRecentRateByCurrencyId(currencyId: Long): List<ExchangeRate>
 }
