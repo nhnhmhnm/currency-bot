@@ -6,11 +6,11 @@ import jakarta.persistence.*
 @Table(name = "currency")
 data class Currency(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    val id: Long? = null,
 
-    @Column(nullable = false, unique = true)
+    @Column(name = "code", nullable = false, unique = true)
     val code: String,
 
-    @Column(nullable = false)
+    @Column(name = "name", nullable = false)
     val name: String
 )
