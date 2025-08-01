@@ -30,7 +30,7 @@ class ExchangeRateJdbcRepositoryImpl(
                 )
                 AND er.buy_rate IS NOT NULL
             ORDER BY er.buy_rate ASC
-            LIMIT 1
+            LIMIT 1;
         """
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
@@ -56,7 +56,7 @@ class ExchangeRateJdbcRepositoryImpl(
                 )
                 AND er.sell_rate IS NOT NULL
             ORDER BY er.sell_rate DESC
-            LIMIT 1
+            LIMIT 1;
         """
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
@@ -81,7 +81,7 @@ class ExchangeRateJdbcRepositoryImpl(
                     WHERE c2.code = :currencyCode
                 )
             ORDER BY er.base_rate ASC
-            LIMIT 1
+            LIMIT 1;
         """
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
@@ -106,7 +106,7 @@ class ExchangeRateJdbcRepositoryImpl(
                     WHERE c2.code = :currencyCode
                 )
             ORDER BY er.base_rate DESC
-            LIMIT 1
+            LIMIT 1;
         """
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
