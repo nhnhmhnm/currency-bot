@@ -21,6 +21,7 @@ class ExchangeController(
         val userId = SecurityContextHolder.getContext().authentication.name.toLong()
         val result = exchangeService.getBestBuyRate(userId, currencyCode, amount)
 
+        return ResponseEntity.ok(result)
     }
 
     @PostMapping("/sell")
@@ -31,6 +32,7 @@ class ExchangeController(
         val userId = SecurityContextHolder.getContext().authentication.name.toLong()
         val result = exchangeService.getBestSellRate(userId, currencyCode, amount)
 
+        return ResponseEntity.ok(result)
     }
 
     @PostMapping("/arbitrage")
@@ -41,5 +43,6 @@ class ExchangeController(
         val userId = SecurityContextHolder.getContext().authentication.name.toLong()
         val result = exchangeService.getBestBuySellRate(userId, currencyCode, amount)
 
+        return ResponseEntity.ok(result)
     }
 }
