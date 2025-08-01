@@ -2,7 +2,7 @@ package org.example.backend.finance.repository
 
 import org.example.backend.finance.dto.ExchangeDTO
 
-interface ExchangeRateJdbcRepository {
+interface ExchangeJdbcRepository {
 
     fun findBestBuyRate(currencyCode: String): ExchangeDTO?
 

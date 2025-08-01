@@ -1,34 +1,34 @@
 package org.example.backend.finance.service
 
 import org.example.backend.finance.dto.ExchangeDTO
-import org.example.backend.finance.repository.ExchangeRateJdbcRepository
+import org.example.backend.finance.repository.ExchangeJdbcRepository
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 
 @Service
-class ExchangeRateServiceImpl(
-    private val exchangeRateJdbcRepository: ExchangeRateJdbcRepository
-) : ExchangeRateService {
+class ExchangeServiceImpl(
+    private val exchangeJdbcRepository: ExchangeJdbcRepository
+) : ExchangeService {
 
     override fun getBestBuyRate(userId: Long, currencyCode: String, amount: BigDecimal): ExchangeDTO {
-        val dto = exchangeRateJdbcRepository.findBestBuyRate(currencyCode)
+        val dto = exchangeJdbcRepository.findBestBuyRate(currencyCode)
             ?: throw IllegalStateException("No buy rate found for $currencyCode")
 
         return dto.copy(userId = userId, amount = amount)
     }
 
     override fun getBestSellRate(userId: Long, currencyCode: String, amount: BigDecimal): ExchangeDTO {
-        val dto = exchangeRateJdbcRepository.findBestSellRate(currencyCode)
+        val dto = exchangeJdbcRepository.findBestSellRate(currencyCode)
             ?: throw IllegalStateException("No sell rate found for $currencyCode")
 
         return dto.copy(userId = userId, amount = amount)
     }
 
     override fun getBestBuySellRate(userId: Long, currencyCode: String, amount: BigDecimal): Pair<ExchangeDTO, ExchangeDTO> {
-        val buyDto = exchangeRateJdbcRepository.findBestBuyBaseRate(currencyCode)
+        val buyDto = exchangeJdbcRepository.findBestBuyBaseRate(currencyCode)
             ?: throw IllegalStateException("No buy base rate found for $currencyCode")
 
-        val sellDto = exchangeRateJdbcRepository.findBestSellBaseRate(currencyCode)
+        val sellDto = exchangeJdbcRepository.findBestSellBaseRate(currencyCode)
             ?: throw IllegalStateException("No sell base rate found for $currencyCode")
 
         return buyDto.copy(userId = userId, amount = amount) to sellDto.copy(userId = userId, amount = amount)

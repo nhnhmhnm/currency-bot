@@ -9,9 +9,9 @@ import java.math.BigDecimal
 import java.sql.ResultSet
 
 @Repository
-class ExchangeRateJdbcRepositoryImpl(
+class ExchangeJdbcRepositoryImpl(
     private val jdbcTemplate: NamedParameterJdbcTemplate
-) : ExchangeRateJdbcRepository {
+) : ExchangeJdbcRepository {
 
     override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
         val sql = """

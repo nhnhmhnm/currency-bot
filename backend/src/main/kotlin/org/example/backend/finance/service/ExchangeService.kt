@@ -3,7 +3,7 @@ package org.example.backend.finance.service
 import org.example.backend.finance.dto.ExchangeDTO
 import java.math.BigDecimal
 
-interface ExchangeRateService {
+interface ExchangeService {
     fun getBestBuyRate(userId: Long, currencyCode: String, amount: BigDecimal): ExchangeDTO
 
     fun getBestSellRate(userId: Long, currencyCode: String, amount: BigDecimal): ExchangeDTO
