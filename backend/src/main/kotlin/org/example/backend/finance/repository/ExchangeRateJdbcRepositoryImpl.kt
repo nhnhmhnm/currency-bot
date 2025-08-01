@@ -1,0 +1,131 @@
+package org.example.backend.finance.repository
+
+import org.example.backend.enums.ExchangeType
+import org.example.backend.finance.dto.ExchangeDTO
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
+import org.springframework.stereotype.Repository
+import java.math.BigDecimal
+import java.sql.ResultSet
+
+@Repository
+class ExchangeRateJdbcRepositoryImpl(
+    private val jdbcTemplate: NamedParameterJdbcTemplate
+) : ExchangeRateJdbcRepository {
+
+    override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
+        val sql = """
+            SELECT * FROM exchange_rate er
+            JOIN currency c ON er.currency_id = c.id
+            WHERE c.code = :currencyCode
+                AND er.notice_time BETWEEN (
+                    SELECT MAX(er2.notice_time) - INTERVAL 5 MINUTE FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+                AND (
+                    SELECT MAX(er2.notice_time) FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+                AND er.buy_rate IS NOT NULL
+            ORDER BY er.buy_rate ASC
+            LIMIT 1
+        """
+
+        val params = MapSqlParameterSource("currencyCode", currencyCode)
+
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
+            .firstOrNull()
+    }
+
+    override fun findBestSellRate(currencyCode: String): ExchangeDTO? {
+        val sql = """
+            SELECT * FROM exchange_rate er
+            JOIN currency c ON er.currency_id = c.id
+            WHERE c.code = :currencyCode
+                AND er.notice_time BETWEEN (
+                    SELECT MAX(er2.notice_time) - INTERVAL 5 MINUTE FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+                AND (
+                    SELECT MAX(er2.notice_time) FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+                AND er.sell_rate IS NOT NULL
+            ORDER BY er.sell_rate DESC
+            LIMIT 1
+        """
+
+        val params = MapSqlParameterSource("currencyCode", currencyCode)
+
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
+            .firstOrNull()
+    }
+
+    override fun findBestBuyBaseRate(currencyCode: String): ExchangeDTO? {
+        val sql = """
+            SELECT * FROM exchange_rate er
+            JOIN currency c ON er.currency_id = c.id
+            WHERE c.code = :currencyCode
+                AND er.notice_time BETWEEN (
+                    SELECT MAX(er2.notice_time) - INTERVAL 5 MINUTE FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+                AND (
+                    SELECT MAX(er2.notice_time) FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+            ORDER BY er.base_rate ASC
+            LIMIT 1
+        """
+
+        val params = MapSqlParameterSource("currencyCode", currencyCode)
+
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
+            .firstOrNull()
+    }
+
+    override fun findBestSellBaseRate(currencyCode: String): ExchangeDTO? {
+        val sql = """
+            SELECT * FROM exchange_rate er
+            JOIN currency c ON er.currency_id = c.id
+            WHERE c.code = :currencyCode
+                AND er.notice_time BETWEEN (
+                    SELECT MAX(er2.notice_time) - INTERVAL 5 MINUTE FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+                AND (
+                    SELECT MAX(er2.notice_time) FROM exchange_rate er2
+                    JOIN currency c2 ON er2.currency_id = c2.id
+                    WHERE c2.code = :currencyCode
+                )
+            ORDER BY er.base_rate DESC
+            LIMIT 1
+        """
+
+        val params = MapSqlParameterSource("currencyCode", currencyCode)
+
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
+            .firstOrNull()
+    }
+
+    fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
+        return ExchangeDTO(
+            userId = -1,  // 나중에 실제 값 세팅
+            bankId = rs.getLong("bank_id"),
+            currencyId = rs.getLong("currency_id"),
+            exchangeRate = when (type) {
+                ExchangeType.BUY -> rs.getBigDecimal("buy_rate")
+                ExchangeType.SELL -> rs.getBigDecimal("sell_rate")
+            },
+            amount = BigDecimal.ZERO,  // 나중에 실제 값 세팅
+            type = type
+        )
+    }
+}
