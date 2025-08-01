@@ -6,9 +6,9 @@ import org.springframework.stereotype.Service
 import java.math.BigDecimal
 
 @Service
-class ExchangeServiceImpl(
+class ExchangeRateServiceImpl(
     private val exchangeRateJdbcRepository: ExchangeRateJdbcRepository
-) : ExchangeService {
+) : ExchangeRateService {
 
     override fun getBestBuyRate(userId: Long, currencyCode: String, amount: BigDecimal): ExchangeDTO {
         val dto = exchangeRateJdbcRepository.findBestBuyRate(currencyCode)
