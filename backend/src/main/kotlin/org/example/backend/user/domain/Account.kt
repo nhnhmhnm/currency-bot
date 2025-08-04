@@ -30,6 +30,9 @@ class Account(
   @Column(name = "balance")
   val balance: BigDecimal = BigDecimal.ZERO,
 
+  @Column(name = "is_active")
+  var isActive: Boolean = false,
+
   @Column(name = "created_at")
   val createdAt: LocalDateTime = LocalDateTime.now()
 )
