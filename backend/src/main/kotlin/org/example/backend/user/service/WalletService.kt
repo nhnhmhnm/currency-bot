@@ -1,10 +1,9 @@
 package org.example.backend.user.service
 
-import org.example.backend.user.dto.AccountRegistrationRequest
 import java.math.BigDecimal
 
 interface WalletService {
-    fun registerAccount(userId: Long, request: AccountRegistrationRequest) // 지갑에 계좌 등록
+    fun connectAccount(userId: Long, bankId: Long, accountNum: String) // 지갑에 계좌 연결
 
     fun checkBalance(userId: Long, currencyId: Long): BigDecimal // 현재 잔액 리턴
     fun increase(userId: Long, currencyId: Long, amount: BigDecimal) // 최종 잔액 리턴

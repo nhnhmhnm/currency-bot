@@ -17,7 +17,7 @@ class Wallet(
     val currencyId: Long,
 
     @Column(name = "account_id")
-    val accountId: Long? = null,
+    var accountId: Long? = null,
 
     @Column(name = "balance")
     val balance: BigDecimal = BigDecimal.ZERO,

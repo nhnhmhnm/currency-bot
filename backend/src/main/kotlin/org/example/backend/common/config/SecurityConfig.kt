@@ -25,9 +25,12 @@ class SecurityConfig(
       .authorizeHttpRequests {
         it
           .requestMatchers(HttpMethod.POST,"/api/user/signup").permitAll()
+          .requestMatchers(HttpMethod.GET,"/api/user/me").authenticated()
           .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
           .requestMatchers(HttpMethod.POST, "/api/auth/reissue").permitAll()
           .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
+          .requestMatchers(HttpMethod.POST, "/api/account").permitAll()
+          .requestMatchers(HttpMethod.POST, "/api/wallet/connect").authenticated()
           .anyRequest().authenticated() // 나머지 요청은 인증 필요
       }
       .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java) // 커스텀 필터 등록

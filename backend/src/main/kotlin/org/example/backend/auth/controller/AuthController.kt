@@ -3,11 +3,13 @@ package org.example.backend.auth.controller
 import org.example.backend.auth.dto.RefreshTokenRequest
 import org.example.backend.auth.dto.TokenResponse
 import org.example.backend.auth.dto.UserLoginRequest
+import org.example.backend.auth.dto.UserPrincipal
 import org.example.backend.auth.service.RedisTokenService
 import org.example.backend.common.jwt.JwtTokenProvider
 import org.example.backend.user.service.UserService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -28,12 +30,9 @@ class AuthController (
   }
 
   @PostMapping("/logout")
-  fun logout(): ResponseEntity<Unit> {
-    val authentication = SecurityContextHolder.getContext().authentication
-    val userId = authentication.name.toLong()
-
-    redisTokenService.deleteAccessToken(userId)
-    redisTokenService.deleteRefreshToken(userId)
+  fun logout(@AuthenticationPrincipal user: UserPrincipal): ResponseEntity<Unit> {
+    redisTokenService.deleteAccessToken(user.id)
+    redisTokenService.deleteRefreshToken(user.id)
 
     return ResponseEntity.noContent().build()
   }

@@ -3,6 +3,7 @@ package org.example.backend.common.jwt
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.example.backend.auth.dto.UserPrincipal
 import org.example.backend.auth.service.RedisTokenService
 import org.example.backend.user.repository.UserRepository
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -50,18 +51,21 @@ class JwtAuthenticationFilter(
       return
     }
 
-    // 6. 인증 객체 생성 (without UserDetails)
+    // 6. UserPrincipal 생성
+    val userPrincipal = UserPrincipal(user.id!!, user.name, user.type)
+
+    // 7. 인증 객체 생성 (without UserDetails)
     val authorities = listOf(SimpleGrantedAuthority("ROLE_${user.type.name.uppercase()}"))
     val authToken = UsernamePasswordAuthenticationToken(
-      userId.toString(),
+      userPrincipal,
       null,
       authorities
     ).apply { details = WebAuthenticationDetailsSource().buildDetails(request) }
 
-    // 7. 인증 객체를 SecurityContextHolder에 등록
+    // 8. 인증 객체를 SecurityContextHolder에 등록
     SecurityContextHolder.getContext().authentication = authToken
 
-    // 8. 다음 필터로 넘기기
+    // 9. 다음 필터로 넘기기
     filterChain.doFilter(request, response)
   }
 }
