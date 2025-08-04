@@ -1,7 +1,7 @@
-package org.example.backend.finance.controller
+package org.example.backend.exchange.controller
 
-import org.example.backend.finance.dto.ExchangeDTO
-import org.example.backend.finance.service.ExchangeService
+import org.example.backend.exchange.dto.ExchangeDTO
+import org.example.backend.exchange.service.ExchangeService
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*

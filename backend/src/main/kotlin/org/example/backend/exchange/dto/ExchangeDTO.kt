@@ -1,4 +1,4 @@
-package org.example.backend.finance.dto
+package org.example.backend.exchange.dto
 
 import org.example.backend.enums.ExchangeType
 import java.math.BigDecimal

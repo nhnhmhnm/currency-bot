@@ -1,6 +1,6 @@
-package org.example.backend.finance.service
+package org.example.backend.exchange.service
 
-import org.example.backend.finance.dto.ExchangeDTO
+import org.example.backend.exchange.dto.ExchangeDTO
 import java.math.BigDecimal
 
 interface ExchangeService {
