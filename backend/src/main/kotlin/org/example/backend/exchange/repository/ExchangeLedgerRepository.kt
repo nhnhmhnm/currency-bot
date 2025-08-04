@@ -1,4 +1,4 @@
-package org.example.backend.finance.repository
+package org.example.backend.exchange.repository
 
 import org.example.backend.finance.domain.ExchangeLedger
 import org.springframework.data.jpa.repository.JpaRepository

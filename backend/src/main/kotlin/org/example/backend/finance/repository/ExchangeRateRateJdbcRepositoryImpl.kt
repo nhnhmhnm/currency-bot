@@ -1,7 +1,7 @@
 package org.example.backend.finance.repository
 
 import org.example.backend.enums.ExchangeType
-import org.example.backend.finance.dto.ExchangeDTO
+import org.example.backend.exchange.dto.ExchangeDTO
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.stereotype.Repository
@@ -9,9 +9,9 @@ import java.math.BigDecimal
 import java.sql.ResultSet
 
 @Repository
-class ExchangeJdbcRepositoryImpl(
+class ExchangeRateRateJdbcRepositoryImpl(
     private val jdbcTemplate: NamedParameterJdbcTemplate
-) : ExchangeJdbcRepository {
+) : ExchangeRateJdbcRepository {
 
     override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
         val sql = """
