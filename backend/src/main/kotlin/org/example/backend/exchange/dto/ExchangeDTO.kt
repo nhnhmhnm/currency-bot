@@ -4,7 +4,6 @@ import org.example.backend.enums.ExchangeType
 import java.math.BigDecimal
 
 data class ExchangeDTO(
-    val userId: Long,
     val bankId: Long,
     val currencyId: Long,
     val exchangeRate: BigDecimal,
