@@ -13,6 +13,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
     private val jdbcTemplate: NamedParameterJdbcTemplate
 ) : ExchangeRateJdbcRepository {
 
+    // bank_id, currency_id, buy_rate
     override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
         val sql = """
             SELECT * FROM exchange_rate er
@@ -38,7 +39,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
         return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
             .firstOrNull()
     }
-
+    // bank_id, currency_id, sell_rate
     override fun findBestSellRate(currencyCode: String): ExchangeDTO? {
         val sql = """
             SELECT * FROM exchange_rate er
@@ -64,7 +65,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
         return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
             .firstOrNull()
     }
-
+    // bank_id, currency_id, base_rate
     override fun findBestBuyBaseRate(currencyCode: String): ExchangeDTO? {
         val sql = """
             SELECT * FROM exchange_rate er
@@ -89,7 +90,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
         return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
             .firstOrNull()
     }
-
+    // bank_id, currency_id, base_rate
     override fun findBestSellBaseRate(currencyCode: String): ExchangeDTO? {
         val sql = """
             SELECT * FROM exchange_rate er
