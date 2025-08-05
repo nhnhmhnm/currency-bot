@@ -1,4 +1,4 @@
-package org.example.backend.finance.domain
+package org.example.backend.exchange.domain
 
 import jakarta.persistence.*
 import org.example.backend.enums.ExchangeLedgerType
