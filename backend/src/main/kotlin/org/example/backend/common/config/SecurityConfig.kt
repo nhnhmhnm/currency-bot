@@ -23,15 +23,26 @@ class SecurityConfig(
       .csrf { it.disable() } // jwt 사용 시 CSRF 불 필요
       .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
       .authorizeHttpRequests {
-        it
-          .requestMatchers(HttpMethod.POST,"/api/user/signup").permitAll()
-          .requestMatchers(HttpMethod.GET,"/api/user/me").authenticated()
-          .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-          .requestMatchers(HttpMethod.POST, "/api/auth/reissue").permitAll()
-          .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
-          .requestMatchers(HttpMethod.POST, "/api/account").permitAll()
-          .requestMatchers(HttpMethod.POST, "/api/wallet/connect").authenticated()
-          .anyRequest().authenticated() // 나머지 요청은 인증 필요
+        // 비인증 허용 경로
+        it.requestMatchers(HttpMethod.POST,
+          "/api/user/signup",
+          "/api/auth/login",
+          "/api/auth/reissue",
+          "/api/account"
+        ).permitAll()
+
+        // 인증 필요 경로
+        it.requestMatchers(HttpMethod.GET,
+          "/api/user/me"
+        ).authenticated()
+
+        it.requestMatchers(HttpMethod.POST,
+          "/api/auth/logout",
+          "/api/wallet/connect"
+        ).authenticated()
+
+        // 나머지 요청은 인증 필요
+        it.anyRequest().authenticated()
       }
       .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java) // 커스텀 필터 등록
     return http.build()
