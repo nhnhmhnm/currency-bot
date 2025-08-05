@@ -117,13 +117,9 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
     fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
         return ExchangeDTO(
-            userId = -1,  // 나중에 실제 값 세팅
             bankId = rs.getLong("bank_id"),
             currencyId = rs.getLong("currency_id"),
-            exchangeRate = when (type) {
-                ExchangeType.BUY -> rs.getBigDecimal("buy_rate")
-                ExchangeType.SELL -> rs.getBigDecimal("sell_rate")
-            },
+            exchangeRate = rs.getBigDecimal("exchange_rate"),
             amount = BigDecimal.ZERO,  // 나중에 실제 값 세팅
             type = type
         )
