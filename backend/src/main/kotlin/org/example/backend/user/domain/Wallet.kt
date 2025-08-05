@@ -23,8 +23,5 @@ class Wallet(
     val balance: BigDecimal = BigDecimal.ZERO,
 
     @Column(name = "is_connected")
-    var isConnected: Boolean = false,
-
-    @Column(name = "created_at")
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    var isConnected: Boolean = false
 )

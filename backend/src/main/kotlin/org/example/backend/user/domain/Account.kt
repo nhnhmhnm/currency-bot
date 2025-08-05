@@ -15,7 +15,7 @@ class Account(
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
   val id: Long? = null,
 
-  @Column(name = "user_id")
+  @Column(name = "user_id", nullable = false)
   val userId: Long,
 
   @Column(name = "bank_id", nullable = false)
@@ -31,7 +31,7 @@ class Account(
   val balance: BigDecimal = BigDecimal.ZERO,
 
   @Column(name = "is_active")
-  var isActive: Boolean = false,
+  var isActive: Boolean = true,
 
   @Column(name = "created_at")
   val createdAt: LocalDateTime = LocalDateTime.now()
