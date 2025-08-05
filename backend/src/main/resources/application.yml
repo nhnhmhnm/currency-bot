@@ -3,12 +3,7 @@ spring:
     name: backend
 
   config:
-    import: optional:application-local.yml
-
-  datasource:
-    url: jdbc:mysql://localhost:3306/yourdb?serverTimezone=Asia/Seoul
-    username: youruser
-    password: yourpw
+    import: optional:application-secret.yml
 
   jpa:
     hibernate:
@@ -17,13 +12,3 @@ spring:
     properties:
       hibernate:
         format_sql: true
-
-  data:
-    redis:
-      host: localhost
-      port: 6379
-
-jwt:
-  secret: ozc7WJTo0kzv4swf1e4iNSKqrUn0qHML7tMkPwwnBSQ= # base 64로 인코딩된 키
-  access_expiration: 1800000    # milliseconds (30 분)
-  refresh_expiration: 604800000 # milliseconds (7 일)
