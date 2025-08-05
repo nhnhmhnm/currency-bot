@@ -2,8 +2,6 @@ package org.example.backend.exchange.controller
 
 import org.example.backend.exchange.dto.ExchangeDTO
 import org.example.backend.exchange.service.ExchangeService
-import org.springframework.http.ResponseEntity
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 import java.math.BigDecimal
 
@@ -12,37 +10,19 @@ import java.math.BigDecimal
 class ExchangeController(
     private val exchangeService: ExchangeService
 ) {
-
-    @PostMapping("/buy")
-    fun buy(
-        @RequestParam currencyCode: String,
-        @RequestParam amount: BigDecimal
-    ): ResponseEntity<ExchangeDTO> {
-        val userId = SecurityContextHolder.getContext().authentication.name.toLong()
-        val result = exchangeService.getBestBuyRate(userId, currencyCode, amount)
-
-        return ResponseEntity.ok(result)
+    // 테스트용 get
+    @GetMapping("/buy")
+    fun buy(@RequestParam currencyCode: String, @RequestParam amount: BigDecimal): ExchangeDTO {
+        return exchangeService.getBestBuyRate(currencyCode, amount)
     }
 
-    @PostMapping("/sell")
-    fun sell(
-        @RequestParam currencyCode: String,
-        @RequestParam amount: BigDecimal
-    ): ResponseEntity<ExchangeDTO> {
-        val userId = SecurityContextHolder.getContext().authentication.name.toLong()
-        val result = exchangeService.getBestSellRate(userId, currencyCode, amount)
-
-        return ResponseEntity.ok(result)
+    @GetMapping("/sell")
+    fun sell(@RequestParam currencyCode: String, @RequestParam amount: BigDecimal): ExchangeDTO {
+        return exchangeService.getBestSellRate(currencyCode, amount)
     }
 
-    @PostMapping("/arbitrage")
-    fun arbitrage(
-        @RequestParam currencyCode: String,
-        @RequestParam amount: BigDecimal
-    ): ResponseEntity<Pair<ExchangeDTO, ExchangeDTO>> {
-        val userId = SecurityContextHolder.getContext().authentication.name.toLong()
-        val result = exchangeService.getBestBuySellRate(userId, currencyCode, amount)
-
-        return ResponseEntity.ok(result)
+    @GetMapping("/arbitrage")
+    fun arbitrage(@RequestParam currencyCode: String, @RequestParam amount: BigDecimal): Pair<ExchangeDTO, ExchangeDTO> {
+        return exchangeService.getBestArbitrageRate(currencyCode, amount)
     }
 }
