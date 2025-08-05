@@ -3,26 +3,24 @@ package org.example.backend.exchange.controller
 import org.example.backend.exchange.dto.ExchangeDTO
 import org.example.backend.exchange.service.ExchangeService
 import org.springframework.web.bind.annotation.*
-import java.math.BigDecimal
 
 @RestController
 @RequestMapping("/api/exchange")
 class ExchangeController(
     private val exchangeService: ExchangeService
 ) {
-    // 테스트용 get
     @GetMapping("/buy")
-    fun buy(@RequestParam currencyCode: String, @RequestParam amount: BigDecimal): ExchangeDTO {
-        return exchangeService.getBestBuyRate(currencyCode, amount)
+    fun buy(@RequestParam currencyCode: String): ExchangeDTO {
+        return exchangeService.getBestBuyRate(currencyCode)
     }
 
     @GetMapping("/sell")
-    fun sell(@RequestParam currencyCode: String, @RequestParam amount: BigDecimal): ExchangeDTO {
-        return exchangeService.getBestSellRate(currencyCode, amount)
+    fun sell(@RequestParam currencyCode: String): ExchangeDTO {
+        return exchangeService.getBestSellRate(currencyCode)
     }
 
     @GetMapping("/arbitrage")
-    fun arbitrage(@RequestParam currencyCode: String, @RequestParam amount: BigDecimal): Pair<ExchangeDTO, ExchangeDTO> {
-        return exchangeService.getBestArbitrageRate(currencyCode, amount)
+    fun arbitrage(@RequestParam currencyCode: String): Pair<ExchangeDTO, ExchangeDTO> {
+        return exchangeService.getBestArbitrageRate(currencyCode)
     }
 }
