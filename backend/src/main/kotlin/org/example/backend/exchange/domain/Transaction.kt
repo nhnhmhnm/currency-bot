@@ -7,7 +7,7 @@ import java.time.LocalDateTime
 
 @Entity
 @Table(name = "transaction")
-data class Transaction(
+class Transaction(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
@@ -17,7 +17,7 @@ data class Transaction(
     @Column(name = "wallet_id", nullable = false)
     val walletId: Long,
 
-    @Column(name = "order_id")
+    @Column(name = "order_id", nullable = false)
     val orderId: Long,
 
     @ManyToOne(fetch = FetchType.LAZY)
