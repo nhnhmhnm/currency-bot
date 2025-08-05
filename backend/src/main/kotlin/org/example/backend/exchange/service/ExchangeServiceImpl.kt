@@ -8,7 +8,7 @@ import java.math.BigDecimal
 @Service
 class ExchangeServiceImpl(
     private val exchangeRateJdbcRepository: ExchangeRateJdbcRepository
-) : ExchangeService {
+): ExchangeService {
 
     override fun getBestBuyRate(currencyCode: String, amount: BigDecimal): ExchangeDTO {
         val dto = exchangeRateJdbcRepository.findBestBuyRate(currencyCode)
