@@ -35,11 +35,11 @@ class WalletServiceImpl(
     return walletRepository.findBalanceByUserIdAndCurrencyId(userId, currencyId)
   }
 
-  override fun increase(userId: Long, currencyId: Long, amount: BigDecimal) {
+  override fun increase(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
     TODO("Not yet implemented")
   }
 
-  override fun decrease(userId: Long, currencyId: Long, amount: BigDecimal) {
+  override fun decrease(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
     TODO("Not yet implemented")
   }
 }
