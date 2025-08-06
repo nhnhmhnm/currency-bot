@@ -8,13 +8,16 @@ data class ExchangeLedgerDTO(
     val id: Long? = null,
     val userId: Long,
     val walletId: Long,
+
     val currencyId: Long,
-    val amount: BigDecimal,
+    val amount: BigDecimal?,
     val balance: BigDecimal,
     val exchangeRate: BigDecimal,
-    val commissionAmount: BigDecimal,
-    val commissionRate: BigDecimal,
-    val commissionCurrencyId: Long,
+
+    val commissionAmount: BigDecimal?,
+    val commissionRate: BigDecimal?,
+    val commissionCurrencyId: Long?,
+
     val type: ExchangeLedgerType,
     val createdAt: LocalDateTime? = null
 )
