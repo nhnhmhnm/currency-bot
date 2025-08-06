@@ -15,13 +15,13 @@ class ExchangeOrder(
     val userId: Long,
 
     @Column(name = "bank_id", nullable = false)
-    val bankId: Long,
+    var bankId: Long,
 
     @Column(name = "from_currency_id", nullable = false)
-    val fromCurrency: Long,
+    val fromCurrencyId: Long,
 
     @Column(name = "to_currency_id", nullable = false)
-    val toCurrency: Long,
+    val toCurrencyId: Long,
 
     @Column(name = "from_amount", nullable = false)
     val fromAmount: BigDecimal,
@@ -39,7 +39,7 @@ class ExchangeOrder(
     @Column(name = "status_desc", columnDefinition = "TEXT")
     var statudDesc: String? = null,
 
-    @Column(name = "requested_at")
+    @Column(name = "requested_at", nullable = false)
     val requestedAt: LocalDateTime = LocalDateTime.now(),
 
     @Column(name = "executed_at")

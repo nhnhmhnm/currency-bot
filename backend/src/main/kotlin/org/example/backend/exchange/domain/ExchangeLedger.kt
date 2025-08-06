@@ -29,13 +29,13 @@ class ExchangeLedger(
     @Column(name = "exchange_rate", nullable = false)
     val exchangeRate: BigDecimal,
 
-    @Column(name = "commission_amount", nullable = false)
+    @Column(name = "commission_amount")
     val commissionAmount: BigDecimal,
 
-    @Column(name = "commission_rate", nullable = false)
+    @Column(name = "commission_rate")
     val commissionRate: BigDecimal,
 
-    @Column(name = "commission_currency_id", nullable = false)
+    @Column(name = "commission_currency_id")
     val commissionCurrencyId: Long,
 
     @Enumerated(EnumType.STRING)
