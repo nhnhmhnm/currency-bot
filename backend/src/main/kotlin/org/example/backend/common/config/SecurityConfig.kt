@@ -28,6 +28,9 @@ class SecurityConfig(
           .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
           .requestMatchers(HttpMethod.POST, "/api/auth/reissue").permitAll()
           .requestMatchers(HttpMethod.POST, "/api/auth/logout").authenticated()
+          .requestMatchers((HttpMethod.GET), "/api/exchange/buy").permitAll()
+          .requestMatchers((HttpMethod.GET), "/api/exchange/sell").permitAll()
+          .requestMatchers((HttpMethod.GET), "/api/exchange/arbitrage").permitAll()
           .anyRequest().authenticated() // 나머지 요청은 인증 필요
       }
       .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java) // 커스텀 필터 등록
