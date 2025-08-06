@@ -37,7 +37,7 @@ class ExchangeOrder(
     var status: OrderStatus = OrderStatus.PENDING,
 
     @Column(name = "status_desc", columnDefinition = "TEXT")
-    var statudDesc: String? = null,
+    var statusDesc: String? = null,
 
     @Column(name = "requested_at", nullable = false)
     val requestedAt: LocalDateTime = LocalDateTime.now(),

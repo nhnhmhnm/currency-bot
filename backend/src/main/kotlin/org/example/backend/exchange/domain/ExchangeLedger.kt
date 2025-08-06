@@ -21,7 +21,7 @@ class ExchangeLedger(
     val currencyId: Long,
 
     @Column(nullable = false)
-    val amount: BigDecimal,
+    val amount: BigDecimal?,
 
     @Column(nullable = false)
     val balance: BigDecimal,
@@ -30,18 +30,18 @@ class ExchangeLedger(
     val exchangeRate: BigDecimal,
 
     @Column(name = "commission_amount")
-    val commissionAmount: BigDecimal,
+    val commissionAmount: BigDecimal?,
 
     @Column(name = "commission_rate")
-    val commissionRate: BigDecimal,
+    val commissionRate: BigDecimal?,
 
     @Column(name = "commission_currency_id")
-    val commissionCurrencyId: Long,
+    val commissionCurrencyId: Long?,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false)
     val type: ExchangeLedgerType,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    val createdAt: LocalDateTime? = LocalDateTime.now()
 )

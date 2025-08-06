@@ -30,7 +30,7 @@ class Transaction(
     val fromAmount: BigDecimal,
 
     @Column(name = "to_amount", nullable = false)
-    val toAmount: BigDecimal,
+    val toAmount: BigDecimal? = null,
 
     @Column(name = "exchange_rate", nullable = false)
     val exchangeRate: BigDecimal? = null,
@@ -42,14 +42,14 @@ class Transaction(
     val commissionAmount: BigDecimal? = null,
 
     @Column(name = "commission_currency_id", nullable = false)
-    val commissionCurrencyId: Long,
+    val commissionCurrencyId: Long? = null,
 
     @Column(name = "profit", nullable = false)
     val profit: BigDecimal? = null,
 
     @Column(name = "profit_currency_id", nullable = false)
-    val profitCurrencyId: Long,
+    val profitCurrencyId: Long? = null,
 
     @Column(name = "created_at", nullable = false)
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    val createdAt: LocalDateTime? = LocalDateTime.now()
 )
