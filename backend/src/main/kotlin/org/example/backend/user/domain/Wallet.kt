@@ -20,7 +20,7 @@ class Wallet(
     var accountId: Long? = null,
 
     @Column(name = "balance")
-    val balance: BigDecimal = BigDecimal.ZERO,
+    var balance: BigDecimal = BigDecimal.ZERO,
 
     @Column(name = "is_connected")
     var isConnected: Boolean = false

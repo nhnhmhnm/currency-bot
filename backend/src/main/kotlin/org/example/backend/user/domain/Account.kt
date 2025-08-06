@@ -28,7 +28,7 @@ class Account(
   val accountNum: String,
 
   @Column(name = "balance")
-  val balance: BigDecimal = BigDecimal.ZERO,
+  var balance: BigDecimal = BigDecimal("1000000000.00"), // 10억원
 
   @Column(name = "is_active")
   var isActive: Boolean = true,

@@ -1,5 +1,6 @@
 package org.example.backend.user.service
 
+import org.example.backend.enums.UserType
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
@@ -35,11 +36,59 @@ class WalletServiceImpl(
     return walletRepository.findBalanceByUserIdAndCurrencyId(userId, currencyId)
   }
 
-  override fun increase(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
-    TODO("Not yet implemented")
+  override fun depositFromAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
+    // 유저 지갑 조회
+    val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
+      ?: throw IllegalArgumentException("지갑이 존재하지 않습니다.")
+
+    // 연결된 계좌 확인
+    val userAccount = wallet.accountId?.let { accountRepository.findById(it).orElse(null) }
+      ?: throw IllegalArgumentException("지갑에 연결된 계좌가 없습니다.")
+
+    // SUPER 계정 찾기
+    val superAccount = accountRepository.findByCurrencyIdAndUserType(currencyId, UserType.SUPER)
+      ?: throw IllegalArgumentException("SUPER 계좌를 찾을 수 없습니다.")
+
+    // 금액 검증
+    if (userAccount.balance < amount) {
+      throw IllegalArgumentException("계좌 잔액이 부족합니다.")
+    }
+
+    // userAccount -> superAccount 송금
+    userAccount.balance = userAccount.balance.minus(amount)
+    superAccount.balance = superAccount.balance.plus(amount)
+
+    // SUPER 계좌에서 입금 확인 후, 지갑에 금액 충전
+    wallet.balance = wallet.balance.plus(amount)
+
+    accountRepository.save(userAccount)
+    accountRepository.save(superAccount)
+    walletRepository.save(wallet)
+
+    return wallet.balance
   }
 
-  override fun decrease(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
-    TODO("Not yet implemented")
+  override fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
+    // 지갑 조회
+    val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
+      ?: throw IllegalArgumentException("지갑이 존재하지 않습니다.")
+
+    // 금액 검증
+    if (wallet.balance < amount) {
+      throw IllegalArgumentException("지갑 잔액이 부족합니다.")
+    }
+
+    // 연결된 계좌 확인
+    val userAccount = wallet.accountId?.let { accountRepository.findById(it).orElse(null) }
+      ?: throw IllegalArgumentException("지갑에 연결된 계좌가 없습니다.")
+
+    // 지갑 -> 계좌 이체
+    wallet.balance = wallet.balance.minus(amount)
+    userAccount.balance = userAccount.balance.plus(amount)
+
+    walletRepository.save(wallet)
+    accountRepository.save(userAccount)
+
+    return wallet.balance
   }
 }
