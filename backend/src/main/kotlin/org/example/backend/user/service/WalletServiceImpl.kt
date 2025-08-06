@@ -1,6 +1,7 @@
 package org.example.backend.user.service
 
 import org.example.backend.enums.UserType
+import org.example.backend.user.repository.AccountJdbcTemplateRepository
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
@@ -11,7 +12,7 @@ import java.math.BigDecimal
 @Transactional
 class WalletServiceImpl(
   private val walletRepository: WalletRepository,
-  private val accountRepository: AccountRepository
+  private val accountRepository: AccountJdbcTemplateRepository
 ) : WalletService {
   override fun connectAccount(userId: Long, bankId: Long, accountNum: String) {
     // 계좌 조회 (은행 번호 + 계좌 번호)
@@ -46,7 +47,7 @@ class WalletServiceImpl(
       ?: throw IllegalArgumentException("지갑에 연결된 계좌가 없습니다.")
 
     // SUPER 계정 찾기
-    val superAccount = accountRepository.findByCurrencyIdAndUserType(currencyId, UserType.SUPER)
+    val superAccount = accountRepository.findSuperByCurrencyIdAndUserType(currencyId, UserType.SUPER)
       ?: throw IllegalArgumentException("SUPER 계좌를 찾을 수 없습니다.")
 
     // 금액 검증
