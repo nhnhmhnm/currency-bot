@@ -9,8 +9,11 @@ import java.math.BigDecimal
 interface WalletRepository : JpaRepository<Wallet, Long> {
     fun findByUserIdAndCurrencyId(userId: Long, currencyId: Long): Wallet?
 
-    @Query("SELECT w.balance FROM Wallet w " +
-                  "WHERE w.userId = :userId AND w.currencyId = :currencyId")
+    @Query("""
+        SELECT w.balance FROM Wallet w 
+        WHERE w.userId = :userId 
+        AND w.currencyId = :currencyId 
+        """)
     fun findBalanceByUserIdAndCurrencyId(
         @Param("userId") userId: Long,
         @Param("currencyId") currencyId: Long

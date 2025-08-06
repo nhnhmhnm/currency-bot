@@ -7,7 +7,7 @@ import java.time.LocalDateTime
 
 @Entity
 @Table(name = "exchange_order")
-data class ExchangeOrder(
+class ExchangeOrder(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
@@ -33,11 +33,14 @@ data class ExchangeOrder(
     var exchangeRate: BigDecimal? = null,
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "status", nullable = false)
     var status: OrderStatus = OrderStatus.PENDING,
 
-    @Column(name = "ordered_at")
-    val orderedAt: LocalDateTime = LocalDateTime.now(),
+    @Column(name = "status_desc", columnDefinition = "TEXT")
+    var statudDesc: String? = null,
+
+    @Column(name = "requested_at")
+    val requestedAt: LocalDateTime = LocalDateTime.now(),
 
     @Column(name = "executed_at")
     var executedAt: LocalDateTime? = null

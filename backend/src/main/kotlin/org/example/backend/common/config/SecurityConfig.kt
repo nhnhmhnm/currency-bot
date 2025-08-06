@@ -38,7 +38,7 @@ class SecurityConfig(
 
         it.requestMatchers(HttpMethod.POST,
           "/api/auth/logout",
-          "/api/wallet/connect"
+          "/api/wallet/**"
         ).authenticated()
 
         // 나머지 요청은 인증 필요

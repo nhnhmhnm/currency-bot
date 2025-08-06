@@ -1,13 +1,13 @@
 package org.example.backend.user.domain
 
 import jakarta.persistence.*
-import org.example.backend.enums.WalletHistoryType
+import org.example.backend.enums.WalletFxHistoryType
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "wallet_history")
-class WalletHistory(
+@Table(name = "wallet_fx_history")
+class WalletFxHistory(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
 
@@ -28,7 +28,7 @@ class WalletHistory(
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    val type: WalletHistoryType,
+    val type: WalletFxHistoryType,
 
     @Column(name = "created_at")
     val createdAt: LocalDateTime = LocalDateTime.now()
