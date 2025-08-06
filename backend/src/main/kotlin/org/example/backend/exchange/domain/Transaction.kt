@@ -20,13 +20,11 @@ class Transaction(
     @Column(name = "order_id", nullable = false)
     val orderId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "from_currency_id")
-    val fromCurrency: Currency,
+    @Column(name = "from_currency_id", nullable = false)
+    val fromCurrencyId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "to_currency_id")
-    val toCurrency: Currency,
+    @Column(name = "to_currency_id", nullable = false)
+    val toCurrencyId: Long,
 
     @Column(name = "from_amount", nullable = false)
     val fromAmount: BigDecimal,
@@ -34,26 +32,24 @@ class Transaction(
     @Column(name = "to_amount", nullable = false)
     val toAmount: BigDecimal,
 
-    @Column(name = "exchange_rate")
+    @Column(name = "exchange_rate", nullable = false)
     val exchangeRate: BigDecimal? = null,
 
-    @Column(name = "commission_rate")
+    @Column(name = "commission_rate", nullable = false)
     val commissionRate: BigDecimal? = null,
 
-    @Column(name = "commission_amount")
+    @Column(name = "commission_amount", nullable = false)
     val commissionAmount: BigDecimal? = null,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "commission_currency_id")
-    val commissionCurrency: Currency? = null,
+    @Column(name = "commission_currency_id", nullable = false)
+    val commissionCurrencyId: Long,
 
-    @Column(name = "profit")
+    @Column(name = "profit", nullable = false)
     val profit: BigDecimal? = null,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "profit_currency_id")
-    val profitCurrency: Currency? = null,
+    @Column(name = "profit_currency_id", nullable = false)
+    val profitCurrencyId: Long,
 
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now()
 )

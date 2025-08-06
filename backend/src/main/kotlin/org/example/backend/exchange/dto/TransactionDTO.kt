@@ -15,9 +15,9 @@ data class TransactionDTO(
     val exchangeRate: BigDecimal?,
     val commissionRate: BigDecimal?,
     val commissionAmount: BigDecimal?,
-    val commissionCurrencyId: Long?,
+    val commissionCurrencyId: Long,
     val profit: BigDecimal?,
-    val profitCurrencyId: Long?,
+    val profitCurrencyId: Long,
     val createdAt: LocalDateTime? = null
 )
 
