@@ -13,10 +13,9 @@ class ExchangeRateRateJdbcRepositoryImpl(
     private val jdbcTemplate: NamedParameterJdbcTemplate
 ) : ExchangeRateJdbcRepository {
 
-    // bank_id, currency_id, buy_rate
     override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, buy_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -39,10 +38,10 @@ class ExchangeRateRateJdbcRepositoryImpl(
         return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
             .firstOrNull()
     }
-    // bank_id, currency_id, sell_rate
+
     override fun findBestSellRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, sell_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -65,10 +64,10 @@ class ExchangeRateRateJdbcRepositoryImpl(
         return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
             .firstOrNull()
     }
-    // bank_id, currency_id, base_rate
+
     override fun findBestBuyBaseRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, base_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -90,10 +89,10 @@ class ExchangeRateRateJdbcRepositoryImpl(
         return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
             .firstOrNull()
     }
-    // bank_id, currency_id, base_rate
+
     override fun findBestSellBaseRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, base_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -120,8 +119,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
         return ExchangeDTO(
             bankId = rs.getLong("bank_id"),
             currencyId = rs.getLong("currency_id"),
-            exchangeRate = rs.getBigDecimal("exchange_rate"),
-            amount = BigDecimal.ZERO,  // 나중에 실제 값 세팅
+            bestRate = rs.getBigDecimal("best_rate"),
             type = type
         )
     }

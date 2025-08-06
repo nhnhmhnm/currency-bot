@@ -6,6 +6,6 @@ import java.math.BigDecimal
 data class ExchangeDTO(
     val bankId: Long,
     val currencyId: Long,
-    val exchangeRate: BigDecimal,
+    val bestRate: BigDecimal,
     val type: ExchangeType  // BUY or SELL
 )

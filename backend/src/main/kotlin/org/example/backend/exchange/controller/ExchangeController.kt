@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*
 class ExchangeController(
     private val exchangeService: ExchangeService
 ) {
+    // 임시 get 메소드로 환율 조회
     @GetMapping("/buy")
     fun buy(@RequestParam currencyCode: String): ExchangeDTO {
         return exchangeService.getBestBuyRate(currencyCode)
@@ -23,4 +24,7 @@ class ExchangeController(
     fun arbitrage(@RequestParam currencyCode: String): Pair<ExchangeDTO, ExchangeDTO> {
         return exchangeService.getBestArbitrageRate(currencyCode)
     }
+
+    // 실제 환전 버튼
+
 }
