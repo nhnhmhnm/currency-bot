@@ -7,7 +7,7 @@ import java.time.LocalDateTime
 
 @Entity
 @Table(name = "exchange_ledger")
-data class ExchangeLedger(
+class ExchangeLedger(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
 
@@ -39,7 +39,7 @@ data class ExchangeLedger(
     val commissionCurrencyId: Long,
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "type", nullable = false)
     val type: ExchangeLedgerType,
 
     @Column(name = "created_at")
