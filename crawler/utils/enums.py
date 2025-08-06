@@ -1,14 +1,15 @@
 from enum import Enum
 
 class Bank(str, Enum):
-    HANA = "HANA"
-    IBK = "IBK"
-    KB = "KB"
-    NH = "NH"
-    SC = "SC"
-    SHINHAN = "SHINHAN"
-    WOORI = "WOORI"
+    IBK = "003"
+    KB = "004"
+    NH = "011"
+    WOORI = "020"
+    SC = "023"
+    HANA = "081"
+    SHINHAN = "088"
     
 class Currency(str, Enum):
+    KRW = "KRW"
     USD = "USD"
     JPY = "JPY"
