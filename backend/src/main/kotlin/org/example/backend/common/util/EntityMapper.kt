@@ -29,7 +29,7 @@ fun ExchangeOrder.toDTO() = ExchangeOrderDTO(
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
     status = this.status,
-    statusDesc = this.statudDesc,
+    statusDesc = this.statusDesc,
     requestedAt = this.requestedAt,
     executedAt = this.executedAt
 )
