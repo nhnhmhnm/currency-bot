@@ -1,5 +1,6 @@
 package org.example.backend.finance.repository
 
+import org.example.backend.common.util.toDTO
 import org.example.backend.enums.ExchangeType
 import org.example.backend.exchange.dto.ExchangeDTO
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -113,14 +114,5 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
         return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
             .firstOrNull()
-    }
-
-    fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
-        return ExchangeDTO(
-            bankId = rs.getLong("bank_id"),
-            currencyId = rs.getLong("currency_id"),
-            bestRate = rs.getBigDecimal("best_rate"),
-            type = type
-        )
     }
 }
