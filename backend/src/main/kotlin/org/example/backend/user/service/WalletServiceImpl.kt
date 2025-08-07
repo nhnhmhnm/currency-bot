@@ -26,7 +26,7 @@ class WalletServiceImpl(
     val wallet = walletRepository.findByUserIdAndCurrencyId(userId, request.currencyId)
       ?: throw IllegalArgumentException("Wallet not found")
 
-    wallet.isActive = true
+    wallet.isConnected = true
     walletRepository.save(wallet)
   }
 

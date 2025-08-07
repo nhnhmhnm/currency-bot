@@ -51,7 +51,7 @@ class UserServiceImpl (
     val wallets = currencies.map { code ->
       val currency = currencyRepository.findByCode(code) ?: throw IllegalArgumentException("잘못된 통화 코드")
 
-      Wallet(userId = savedUser.id!!, currencyId = currency.id!!, isActive = false)
+      Wallet(userId = savedUser.id!!, currencyId = currency.id!!, isConnected = false)
     }
 
     walletRepository.saveAll(wallets)
