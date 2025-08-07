@@ -18,14 +18,13 @@ import java.math.RoundingMode
 import java.time.LocalDateTime
 
 @Service
-open class ExchangeOrderServiceImpl(
+class ExchangeOrderServiceImpl(
     private val exchangeOrderRepository: ExchangeOrderRepository,
     private val exchangeService: ExchangeService,
     private val transactionService: TransactionService,
     private val ledgerService: ExchangeLedgerService,
     private val currencyRepository: CurrencyRepository,
     private val walletRepository: WalletRepository
-    private val userRepository: UserRepository
 ): ExchangeOrderService {
     val commission = BigDecimal("0.0005") // 0.05% 수수료
 
@@ -68,7 +67,7 @@ open class ExchangeOrderServiceImpl(
         val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
         val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, fromCurrency.id)
 
-        // 4. 주문 SUCCESS로 변경
+        // 4. 주문 SUCCESS 변경
         val savedOrder = exchangeOrderRepository.findById(order.id)
             .orElseThrow { IllegalArgumentException("주문을 찾을 수 없습니다: ${order.id}") }
             .apply {
@@ -174,7 +173,7 @@ open class ExchangeOrderServiceImpl(
         val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
         val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, toCurrency.id)
 
-        // 4. 주문 SUCCESS로 변경
+        // 4. 주문 SUCCESS 변경
         val savedOrder = exchangeOrderRepository.findById(order.id)
             .orElseThrow { IllegalArgumentException("주문을 찾을 수 없습니다: ${order.id}") }
             .apply {
@@ -232,14 +231,14 @@ open class ExchangeOrderServiceImpl(
     }
 
     @Transactional
-    override fun arbitrageOrder(userId: Long, currencyCode: String, amount: BigDecimal): Pair<ExchangeOrderDTO, ExchangeOrderDTO> {
+    override fun arbitrageOrder(userId: Long, currencyCode: String, amount: BigDecimal, isArbitrage: Boolean): Pair<ExchangeOrderDTO, ExchangeOrderDTO> {
         // 1. BuyOrder 실행: KRW → 외화
         val buyOrderDto = buyOrder(userId, currencyCode, amount, true)
 
         // 2. SellOrder 실행: 외화 → KRW (amount : 방금 매수한 외화)
         val sellOrderDto = sellOrder(userId, currencyCode, buyOrderDto.toAmount, true)
 
-        // 3. Pair로 반환
+        // 3. Pair 반환
         return Pair(buyOrderDto, sellOrderDto)
     }
 }
