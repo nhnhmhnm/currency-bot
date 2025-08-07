@@ -1,6 +1,5 @@
 package org.example.backend.exchange.service
 
-import jakarta.transaction.Transactional
 import org.example.backend.common.util.toDTO
 import org.example.backend.enums.ExchangeLedgerType
 import org.example.backend.enums.OrderStatus
@@ -10,9 +9,9 @@ import org.example.backend.exchange.dto.ExchangeOrderDTO
 import org.example.backend.exchange.dto.TransactionDTO
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.repository.CurrencyRepository
-import org.example.backend.user.repository.UserRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDateTime
