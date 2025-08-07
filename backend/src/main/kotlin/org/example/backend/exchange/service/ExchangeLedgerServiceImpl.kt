@@ -11,20 +11,20 @@ import java.time.LocalDateTime
 class ExchangeLedgerServiceImpl(
     private val exchangeLedgerRepository: ExchangeLedgerRepository,
 ): ExchangeLedgerService {
-    override fun record(ledger: ExchangeLedgerDTO): ExchangeLedgerDTO {
+    override fun record(ledgerDto: ExchangeLedgerDTO): ExchangeLedgerDTO {
+        val createdAt = LocalDateTime.now()
         val entity = ExchangeLedger(
             id = 0,
-            userId = ledger.userId,
-            walletId = ledger.walletId,
-            currencyId = ledger.currencyId,
-            amount = ledger.amount,
-            balance = ledger.balance,
-            exchangeRate = ledger.exchangeRate,
-            commissionAmount = ledger.commissionAmount,
-            commissionRate = ledger.commissionRate,
-            commissionCurrencyId = ledger.commissionCurrencyId,
-            type = ledger.type,
-            createdAt = ledger.createdAt ?: LocalDateTime.now()
+            userId = ledgerDto.userId,
+            fromCurrencyId = ledgerDto.fromCurrencyId,
+            toCurrencyId = ledgerDto.toCurrencyId,
+            fromAmount = ledgerDto.fromAmount,
+            toAmount = ledgerDto.toAmount,
+            exchangeRate = ledgerDto.exchangeRate,
+            commissionAmount = ledgerDto.commissionAmount,
+            commissionCurrencyId = ledgerDto.commissionCurrencyId,
+            type = ledgerDto.type,
+            createdAt = createdAt
         )
         val saved = exchangeLedgerRepository.save(entity)
 
