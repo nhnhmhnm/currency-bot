@@ -26,22 +26,19 @@ class ExchangeOrder(
     @Column(name = "from_amount", nullable = false)
     val fromAmount: BigDecimal,
 
-    @Column(name = "to_amount")
-    var toAmount: BigDecimal? = null,
+    @Column(name = "to_amount", nullable = false)
+    var toAmount: BigDecimal,
 
-    @Column(name = "exchange_rate")
-    var exchangeRate: BigDecimal? = null,
+    @Column(name = "exchange_rate", nullable = false)
+    var exchangeRate: BigDecimal,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    var status: OrderStatus = OrderStatus.PENDING,
-
-    @Column(name = "status_desc", columnDefinition = "TEXT")
-    var statusDesc: String? = null,
+    var status: OrderStatus,
 
     @Column(name = "requested_at", nullable = false)
-    val requestedAt: LocalDateTime = LocalDateTime.now(),
+    val requestedAt: LocalDateTime
 
-    @Column(name = "executed_at")
-    var executedAt: LocalDateTime? = null
+//    @Column(name = "executed_at")
+//    var executedAt: LocalDateTime? = null
 )

@@ -8,7 +8,7 @@ import java.time.LocalDateTime
 @Table(name = "wallet")
 class Wallet(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long? = null,
+    val id: Long,
 
     @Column(name = "user_id", nullable = false)
     val userId: Long,

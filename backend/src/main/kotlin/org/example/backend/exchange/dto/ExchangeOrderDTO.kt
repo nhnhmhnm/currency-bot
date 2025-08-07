@@ -12,12 +12,10 @@ data class ExchangeOrderDTO(
     val fromCurrencyId: Long,
     val toCurrencyId: Long,
     val fromAmount: BigDecimal,
-    val toAmount: BigDecimal?,
-    val exchangeRate: BigDecimal?,
+    val toAmount: BigDecimal,
+    val exchangeRate: BigDecimal,
 
     val status: OrderStatus,
-    val statusDesc: String? = null,
-
-    val requestedAt: LocalDateTime? = null,
-    val executedAt: LocalDateTime? = null
+    val requestedAt: LocalDateTime? = null
+//    val executedAt: LocalDateTime? = null
 )

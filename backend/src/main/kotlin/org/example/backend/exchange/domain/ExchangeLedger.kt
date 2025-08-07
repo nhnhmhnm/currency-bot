@@ -14,29 +14,35 @@ class ExchangeLedger(
     @Column(name = "user_id", nullable = false)
     val userId: Long,
 
-    @Column(name = "wallet_id", nullable = false)
-    val walletId: Long,
+//    @Column(name = "wallet_id", nullable = false)
+//    val walletId: Long,
 
-    @Column(name = "currency_id", nullable = false)
-    val currencyId: Long,
+    @Column(name = "from_currency_id", nullable = false)
+    val fromCurrencyId: Long?,
 
-    @Column(nullable = false)
-    val amount: BigDecimal?,
+    @Column(name = "to_currency_id", nullable = false)
+    val toCurrencyId: Long?,
 
-    @Column(nullable = false)
-    val balance: BigDecimal,
+    @Column(name = "from_amount", nullable = false)
+    val fromAmount: BigDecimal?,
+
+    @Column(name = "to_amount", nullable = false)
+    val toAmount: BigDecimal?,
+
+//    @Column(nullable = false)
+//    val balance: BigDecimal,
 
     @Column(name = "exchange_rate", nullable = false)
     val exchangeRate: BigDecimal,
 
-    @Column(name = "commission_amount")
-    val commissionAmount: BigDecimal?,
-
-    @Column(name = "commission_rate")
-    val commissionRate: BigDecimal?,
+//    @Column(name = "commission_rate")
+//    val commissionRate: BigDecimal?,
 
     @Column(name = "commission_currency_id")
     val commissionCurrencyId: Long?,
+
+    @Column(name = "commission_amount")
+    val commissionAmount: BigDecimal?,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "type", nullable = false)

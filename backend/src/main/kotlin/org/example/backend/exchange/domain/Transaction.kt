@@ -1,7 +1,6 @@
 package org.example.backend.exchange.domain
 
 import jakarta.persistence.*
-import org.example.backend.finance.domain.Currency
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -30,26 +29,25 @@ class Transaction(
     val fromAmount: BigDecimal,
 
     @Column(name = "to_amount", nullable = false)
-    val toAmount: BigDecimal? = null,
+    val toAmount: BigDecimal,
 
     @Column(name = "exchange_rate", nullable = false)
-    val exchangeRate: BigDecimal? = null,
+    val exchangeRate: BigDecimal,
 
-    @Column(name = "commission_rate", nullable = false)
-    val commissionRate: BigDecimal? = null,
-
-    @Column(name = "commission_amount", nullable = false)
-    val commissionAmount: BigDecimal? = null,
-
-    @Column(name = "commission_currency_id", nullable = false)
+    // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
+    @Column(name = "commission_currency_id")
     val commissionCurrencyId: Long? = null,
 
-    @Column(name = "profit", nullable = false)
-    val profit: BigDecimal? = null,
+    @Column(name = "commission_amount")
+    val commissionAmount: BigDecimal? = null,
 
-    @Column(name = "profit_currency_id", nullable = false)
+    // profit : 환전으로 인해 소수점 이하가 발생하는 경우, 그 차액 (은행이 받는 이익)
+    @Column(name = "profit_currency_id")
     val profitCurrencyId: Long? = null,
 
+    @Column(name = "profit")
+    val profit: BigDecimal? = null,
+
     @Column(name = "created_at", nullable = false)
-    val createdAt: LocalDateTime? = LocalDateTime.now()
+    val createdAt: LocalDateTime
 )

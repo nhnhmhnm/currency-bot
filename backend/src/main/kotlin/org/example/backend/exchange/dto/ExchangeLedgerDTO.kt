@@ -7,17 +7,16 @@ import java.time.LocalDateTime
 data class ExchangeLedgerDTO(
     val id: Long? = null,
     val userId: Long,
-    val walletId: Long,
+//    val walletId: Long,
 
-    val currencyId: Long,
-    val amount: BigDecimal?,
-    val balance: BigDecimal,
+    val fromCurrencyId: Long,
+    val toCurrencyId: Long,
+    val fromAmount: BigDecimal,
+    val toAmount: BigDecimal,
     val exchangeRate: BigDecimal,
 
-    val commissionAmount: BigDecimal?,
-    val commissionRate: BigDecimal?,
     val commissionCurrencyId: Long?,
+    val commissionAmount: BigDecimal?,
 
-    val type: ExchangeLedgerType,
-    val createdAt: LocalDateTime? = null
+    val type: ExchangeLedgerType
 )
