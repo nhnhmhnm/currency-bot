@@ -1,9 +1,11 @@
 package org.example.backend.exchange.service
 
 import org.example.backend.exchange.dto.ExchangeDTO
+import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.repository.ExchangeRateJdbcRepository
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
+import java.math.RoundingMode
 
 @Service
 class ExchangeServiceImpl(
@@ -24,13 +26,43 @@ class ExchangeServiceImpl(
         return dto
     }
 
-    override fun getBestArbitrageRate(currencyCode: String): Pair<ExchangeDTO, ExchangeDTO> {
-        val buyDto = exchangeRateJdbcRepository.findBestBuyBaseRate(currencyCode)
+    override fun getBestBuyBaseRate(currencyCode: String): ExchangeDTO {
+        val dto = exchangeRateJdbcRepository.findBestBuyBaseRate(currencyCode)
             ?: throw IllegalStateException("No buy base rate found for $currencyCode")
 
-        val sellDto = exchangeRateJdbcRepository.findBestSellBaseRate(currencyCode)
+        return dto
+    }
+
+    override fun getBestSellBaseRate(currencyCode: String): ExchangeDTO {
+        val dto = exchangeRateJdbcRepository.findBestSellBaseRate(currencyCode)
             ?: throw IllegalStateException("No sell base rate found for $currencyCode")
 
-        return buyDto to sellDto
+        return dto
     }
+
+    override fun calculateExchange(fromCurrency: Currency, toCurrency: Currency, exchangeRate: BigDecimal, fromAmount: BigDecimal): Pair<BigDecimal, BigDecimal> {
+        val scale = toCurrency.scale
+
+        val rawAmount =
+            if (fromCurrency.code == "KRW") {
+            // KRW → 외화 (Buy)
+            fromAmount.divide(exchangeRate, 10, RoundingMode.DOWN)
+            }
+            else if (toCurrency.code == "KRW") {
+            // 외화 → KRW (Sell)
+            fromAmount.multiply(exchangeRate)
+            }
+            else {
+                throw IllegalArgumentException("지원하지 않는 환전 방향입니다")
+            }
+
+        // 환전 금액
+        val toAmount = rawAmount.setScale(scale, RoundingMode.DOWN)
+
+        // 차익
+        val bankProfit = rawAmount.subtract(toAmount)
+
+        return Pair(toAmount, bankProfit)
+    }
+
 }
