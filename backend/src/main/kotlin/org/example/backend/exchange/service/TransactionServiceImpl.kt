@@ -11,23 +11,22 @@ import java.time.LocalDateTime
 class TransactionServiceImpl(
     private val transactionRepository: TransactionRepository
 ): TransactionService {
-    override fun record(transaction: TransactionDTO): TransactionDTO {
+    override fun record(transactionDto: TransactionDTO): TransactionDTO {
+        val createdAt = LocalDateTime.now()
         val entity = Transaction(
-            id = 0,
-            userId = transaction.userId,
-            walletId = transaction.walletId,
-            orderId = transaction.orderId,
-            fromCurrencyId = transaction.fromCurrencyId,
-            toCurrencyId = transaction.toCurrencyId,
-            fromAmount = transaction.fromAmount,
-            toAmount = transaction.toAmount,
-            exchangeRate = transaction.exchangeRate,
-            commissionRate = transaction.commissionRate,
-            commissionAmount = transaction.commissionAmount,
-            commissionCurrencyId = transaction.commissionCurrencyId,
-            profit = transaction.profit,
-            profitCurrencyId = transaction.profitCurrencyId,
-            createdAt = transaction.createdAt ?: LocalDateTime.now()
+            userId = transactionDto.userId,
+            walletId = transactionDto.walletId,
+            orderId = transactionDto.orderId,
+            fromCurrencyId = transactionDto.fromCurrencyId,
+            toCurrencyId = transactionDto.toCurrencyId,
+            fromAmount = transactionDto.fromAmount,
+            toAmount = transactionDto.toAmount,
+            exchangeRate = transactionDto.exchangeRate,
+            commissionCurrencyId = transactionDto.commissionCurrencyId,
+            commissionAmount = transactionDto.commissionAmount,
+            profitCurrencyId = transactionDto.profitCurrencyId,
+            profit = transactionDto.profit,
+            createdAt = createdAt
         )
         val saved = transactionRepository.save(entity)
 
