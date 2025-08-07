@@ -10,8 +10,11 @@ import org.example.backend.exchange.dto.ExchangeOrderDTO
 import org.example.backend.exchange.dto.TransactionDTO
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.repository.CurrencyRepository
+import org.example.backend.user.repository.UserRepository
+import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDateTime
 
 @Service
@@ -20,173 +23,221 @@ open class ExchangeOrderServiceImpl(
     private val exchangeService: ExchangeService,
     private val transactionService: TransactionService,
     private val ledgerService: ExchangeLedgerService,
-    private val currencyRepository: CurrencyRepository
+    private val currencyRepository: CurrencyRepository,
+    private val walletRepository: WalletRepository
+    private val userRepository: UserRepository
 ): ExchangeOrderService {
+    val commission = BigDecimal("0.0005") // 0.05% 수수료
+
     @Transactional
-    override fun buyOrder(userId: Long, currencyCode: String, amount: BigDecimal): ExchangeOrderDTO {
-        // 1. PENDING 주문 생성
-        val fromCurrencyId = currencyRepository.findByCode("KRW")?.id
-            ?: throw IllegalArgumentException("KRW 통화 없음")
-        val toCurrencyId = currencyRepository.findByCode(currencyCode)?.id
-            ?: throw IllegalArgumentException("통화 없음: $currencyCode")
+    override fun buyOrder(userId: Long, currencyCode: String, amount: BigDecimal, isArbitrage: Boolean): ExchangeOrderDTO {
+        val requestedAt = LocalDateTime.now()
 
-        var order = ExchangeOrder(
-                userId = userId,
-                bankId = 0L, // 2번에서
-                fromCurrencyId = fromCurrencyId,
-                toCurrencyId = fromCurrencyId,
-                fromAmount = amount,
-                toAmount = null, // 3번에서
-                exchangeRate = null, // 2번에서
-                status = OrderStatus.PENDING, // 마지막에 변경
-                statusDesc = null, // 주문 상태 설명 실패일 때만 작성
-                requestedAt = LocalDateTime.now(),
-                executedAt = null // 마지막에 변경
-            )
+        // 통화 조회
+        val fromCurrency = currencyRepository.findByCode("KRW")
+        val toCurrency = currencyRepository.findByCode(currencyCode)
 
-        val savedOrder = exchangeOrderRepository.save(order)
+        // 환전 계산
+        val bestRate = if (isArbitrage) exchangeService.getBestBuyBaseRate(currencyCode) else exchangeService.getBestBuyRate(currencyCode)
 
-        try {
-            // 2. 최적 은행/환율 조회
-            val bestRate = exchangeService.getBestBuyRate(currencyCode)
-            savedOrder.bankId = bestRate.bankId
-            savedOrder.exchangeRate = bestRate.bestRate
+        val commissionAmount = amount.multiply(commission) // 환전 수수료
+        val exchangeAmount = amount - commissionAmount // 실제 환전할 금액
 
-            // 3. toAmount 계산 + 가상 금액 이동
-
-            // 4. 주문 SUCCESS로 변경
-            savedOrder.status = OrderStatus.SUCCESS
-            savedOrder.executedAt = LocalDateTime.now()
-
-            exchangeOrderRepository.save(savedOrder)
-
-            // 5. 거래/장부 기록 저장 (간단 예시)
-            val trxDto = TransactionDTO(
-                userId = userId,
-                walletId = 0L,
-                orderId = savedOrder.id!!,
-                fromCurrencyId = fromCurrencyId,
-                toCurrencyId = toCurrencyId,
-                fromAmount = amount,
-                toAmount = savedOrder.toAmount,
-                exchangeRate = savedOrder.exchangeRate,
-                commissionRate = null,
-                commissionAmount = null,
-                commissionCurrencyId = null,
-                profit = null,
-                profitCurrencyId = null
-            )
-            transactionService.record(trxDto)
-
-            val ledgerDto = ExchangeLedgerDTO(
-                userId = userId,
-                walletId = 0L,
-                currencyId = toCurrencyId,
-                amount = savedOrder.toAmount,
-                balance = BigDecimal.ZERO,
-                exchangeRate = savedOrder.exchangeRate!!,
-                commissionAmount = null,
-                commissionRate = null,
-                commissionCurrencyId = null,
-                type = ExchangeLedgerType.FX_BUY
-            )
-            ledgerService.record(ledgerDto)
-
-            return savedOrder.toDTO()
-
-        } catch (ex: Exception) {
-            // 실패시 주문 FAILED
-            savedOrder.status = OrderStatus.FAILED
-            // 실패 이유
-//            savedOrder.statudDesc =
-            exchangeOrderRepository.save(savedOrder)
-            throw ex
-        }
-    }
-    @Transactional
-    override fun sellOrder(userId: Long, currencyCode: String, amount: BigDecimal): ExchangeOrderDTO {
-        val fromCurrencyId = currencyRepository.findByCode(currencyCode)?.id
-            ?: throw IllegalArgumentException("통화 없음: $currencyCode")
-        val toCurrencyId = currencyRepository.findByCode("KRW")?.id
-            ?: throw IllegalArgumentException("KRW 통화 없음")
-
-        var order = ExchangeOrder(
-            userId = userId,
-            bankId = 0L, // 최적 은행
-            fromCurrencyId = fromCurrencyId,
-            toCurrencyId = toCurrencyId,
-            fromAmount = amount,
-            toAmount = null,
-            exchangeRate = null,
-            status = OrderStatus.PENDING,
-            statusDesc = null,
-            requestedAt = LocalDateTime.now(),
-            executedAt = null
+        val (toAmount, bankProfit) = exchangeService.calculateExchange(
+            fromCurrency = fromCurrency,
+            toCurrency = toCurrency,
+            exchangeRate = bestRate.bestRate,
+            fromAmount = exchangeAmount,
         )
 
-        var savedOrder = exchangeOrderRepository.save(order)
-
-        try {
-            // 2. 최적 은행/환율 조회 (판매)
-            val bestRate = exchangeService.getBestSellRate(currencyCode)
-            savedOrder.bankId = bestRate.bankId
-            savedOrder.exchangeRate = bestRate.bestRate
-
-            // 3. toAmount 계산 (외화 * 환율)
-            savedOrder.status = OrderStatus.SUCCESS
-            savedOrder.executedAt = LocalDateTime.now()
-
-            exchangeOrderRepository.save(savedOrder)
-
-
-            // 4. 거래/장부 기록 저장
-            val trxDto = TransactionDTO(
+        val order = ExchangeOrder(
                 userId = userId,
-                walletId = 0L,
-                orderId = savedOrder.id!!,
-                fromCurrencyId = fromCurrencyId,
-                toCurrencyId = toCurrencyId,
+                bankId = bestRate.bankId,
+                fromCurrencyId = fromCurrency.id,
+                toCurrencyId = toCurrency.id,
                 fromAmount = amount,
-                toAmount = savedOrder.toAmount,
-                exchangeRate = savedOrder.exchangeRate,
-                commissionRate = null,
-                commissionAmount = null,
-                commissionCurrencyId = null,
-                profit = null,
-                profitCurrencyId = null
+                toAmount = toAmount,
+                exchangeRate = bestRate.bestRate,
+                status = OrderStatus.PENDING,
+                requestedAt = requestedAt,
             )
-            transactionService.record(trxDto)
 
-            val ledgerDto = ExchangeLedgerDTO(
-                userId = userId,
-                walletId = 0L,
-                currencyId = fromCurrencyId,
-                amount = amount.negate(), // 외화가 빠져나감
-                balance = BigDecimal.ZERO,
-                exchangeRate = savedOrder.exchangeRate!!,
-                commissionAmount = null,
-                commissionRate = null,
-                commissionCurrencyId = null,
-                type = ExchangeLedgerType.FX_SELL
-            )
-            ledgerService.record(ledgerDto)
+        exchangeOrderRepository.save(order)
 
-            return savedOrder.toDTO()
+        // 가상 금액 이동
+        val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
+        val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, fromCurrency.id)
 
-        } catch (ex: Exception) {
-            savedOrder.status = OrderStatus.FAILED
-            exchangeOrderRepository.save(savedOrder)
-            throw ex
-        }
+        // 4. 주문 SUCCESS로 변경
+        val savedOrder = exchangeOrderRepository.findById(order.id)
+            .orElseThrow { IllegalArgumentException("주문을 찾을 수 없습니다: ${order.id}") }
+            .apply {
+                status = OrderStatus.SUCCESS
+            }
+
+        // 5. 거래 기록 저장
+        val userToCompany = TransactionDTO(
+            userId = userId,
+            walletId = userWallet.id, // 사용자 지갑 ID
+            orderId = savedOrder.id,
+            fromCurrencyId = fromCurrency.id,
+            toCurrencyId = toCurrency.id,
+            fromAmount = amount,
+            toAmount = toAmount,
+            exchangeRate = bestRate.bestRate,
+            commissionAmount = commissionAmount, // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
+            commissionCurrencyId = fromCurrency.id,
+            profitCurrencyId = toCurrency.id,
+            profit = null
+        )
+        transactionService.record(userToCompany)
+
+        val companyToBank = TransactionDTO(
+            userId = 1L, // 회사 ID
+            walletId = companyWallet.id, // 회사 지갑 ID
+            orderId = savedOrder.id,
+            fromCurrencyId = fromCurrency.id,
+            toCurrencyId = toCurrency.id,
+            fromAmount = exchangeAmount,
+            toAmount = toAmount,
+            exchangeRate = bestRate.bestRate,
+            commissionCurrencyId = fromCurrency.id,
+            commissionAmount = null,
+            profitCurrencyId = toCurrency.id,
+            profit = bankProfit // profit : 환전으로 인해 소수점 이하가 발생하는 경우, 그 차액 (은행이 받는 이익)
+        )
+        transactionService.record(companyToBank)
+
+        // 6. 환전 장부 기록 저장
+        val ledgerDto = ExchangeLedgerDTO(
+            userId = userId,
+            fromCurrencyId = fromCurrency.id,
+            toCurrencyId = toCurrency.id,
+            fromAmount = amount,
+            toAmount = toAmount,
+            exchangeRate = bestRate.bestRate,
+            commissionCurrencyId = fromCurrency.id,
+            commissionAmount = commissionAmount,
+            type = ExchangeLedgerType.FX_BUY,
+        )
+        ledgerService.record(ledgerDto)
+
+        return savedOrder.toDTO()
+    }
+
+    @Transactional
+    override fun sellOrder(userId: Long, currencyCode: String, amount: BigDecimal, isArbitrage: Boolean): ExchangeOrderDTO {
+        val requestedAt = LocalDateTime.now()
+
+        // 통화 조회
+        val fromCurrency = currencyRepository.findByCode(currencyCode)
+        val toCurrency = currencyRepository.findByCode("KRW")
+
+        // 환전 계산
+        val bestRate =
+            if (isArbitrage) {
+                exchangeService.getBestSellBaseRate(currencyCode)
+            }
+            else {
+                exchangeService.getBestSellRate(currencyCode)
+            }
+
+        val (rawToAmount, bankProfit) = exchangeService.calculateExchange(
+            fromCurrency = fromCurrency,
+            toCurrency = toCurrency,
+            exchangeRate = bestRate.bestRate,
+            fromAmount = amount,
+        )
+
+        // 수수료 계산
+        val commissionAmount = if (isArbitrage) BigDecimal.ZERO else rawToAmount.multiply(commission)
+        val tmpToAmount = rawToAmount.subtract(commissionAmount)
+
+        val toAmount = tmpToAmount.setScale(toCurrency.scale, RoundingMode.DOWN)
+        val profit = tmpToAmount.subtract(toAmount)
+
+        val order = ExchangeOrder(
+            userId = userId,
+            bankId = bestRate.bankId,
+            fromCurrencyId = fromCurrency.id,
+            toCurrencyId = toCurrency.id,
+            fromAmount = amount,
+            toAmount = toAmount,
+            exchangeRate = bestRate.bestRate,
+            status = OrderStatus.PENDING,
+            requestedAt = requestedAt,
+        )
+
+        exchangeOrderRepository.save(order)
+
+        // 가상 금액 이동
+        val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
+        val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, toCurrency.id)
+
+        // 4. 주문 SUCCESS로 변경
+        val savedOrder = exchangeOrderRepository.findById(order.id)
+            .orElseThrow { IllegalArgumentException("주문을 찾을 수 없습니다: ${order.id}") }
+            .apply {
+                status = OrderStatus.SUCCESS
+            }
+
+        // 5. 거래 기록 저장
+        val userToCompany = TransactionDTO(
+            userId = userId,
+            walletId = userWallet.id, // 사용자 지갑 ID
+            orderId = savedOrder.id,
+            fromCurrencyId = fromCurrency.id,
+            toCurrencyId = toCurrency.id,
+            fromAmount = amount,
+            toAmount = toAmount,
+            exchangeRate = bestRate.bestRate,
+            commissionAmount = commissionAmount, // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
+            commissionCurrencyId = fromCurrency.id,
+            profitCurrencyId = toCurrency.id,
+            profit = profit
+        )
+        transactionService.record(userToCompany)
+
+        val companyToBank = TransactionDTO(
+            userId = 1L, // 회사 ID
+            walletId = companyWallet.id, // 회사 지갑 ID
+            orderId = savedOrder.id,
+            fromCurrencyId = fromCurrency.id,
+            toCurrencyId = toCurrency.id,
+            fromAmount = amount,
+            toAmount = rawToAmount,
+            exchangeRate = bestRate.bestRate,
+            commissionCurrencyId = fromCurrency.id,
+            commissionAmount = null,
+            profitCurrencyId = toCurrency.id,
+            profit = bankProfit // profit : 환전으로 인해 소수점 이하가 발생하는 경우, 그 차액 (은행이 받는 이익)
+        )
+        transactionService.record(companyToBank)
+
+        // 6. 환전 장부 기록 저장
+        val ledgerDto = ExchangeLedgerDTO(
+            userId = userId,
+            fromCurrencyId = fromCurrency.id,
+            toCurrencyId = toCurrency.id,
+            fromAmount = amount,
+            toAmount = toAmount,
+            exchangeRate = bestRate.bestRate,
+            commissionCurrencyId = fromCurrency.id,
+            commissionAmount = commissionAmount,
+            type = ExchangeLedgerType.FX_SELL,
+        )
+        ledgerService.record(ledgerDto)
+
+        return savedOrder.toDTO()
     }
 
     @Transactional
     override fun arbitrageOrder(userId: Long, currencyCode: String, amount: BigDecimal): Pair<ExchangeOrderDTO, ExchangeOrderDTO> {
         // 1. BuyOrder 실행: KRW → 외화
-        val buyOrderDto = buyOrder(userId, currencyCode, amount)
+        val buyOrderDto = buyOrder(userId, currencyCode, amount, true)
 
         // 2. SellOrder 실행: 외화 → KRW (amount : 방금 매수한 외화)
-        val sellOrderDto = sellOrder(userId, currencyCode, buyOrderDto.toAmount!!)
+        val sellOrderDto = sellOrder(userId, currencyCode, buyOrderDto.toAmount, true)
 
         // 3. Pair로 반환
         return Pair(buyOrderDto, sellOrderDto)
