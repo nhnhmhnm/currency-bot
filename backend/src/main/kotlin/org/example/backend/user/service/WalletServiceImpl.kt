@@ -30,6 +30,8 @@ class WalletServiceImpl(
     // 지갑에 계좌 연결
     wallet.accountId = account.id
     wallet.isConnected = true
+
+    walletRepository.save(wallet)
   }
 
   override fun checkBalance(userId: Long, currencyId: Long): BigDecimal {

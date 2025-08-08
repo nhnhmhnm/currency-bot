@@ -2,47 +2,29 @@ package org.example.backend.exchange.controller
 
 import org.example.backend.exchange.dto.ExchangeDTO
 import org.example.backend.exchange.service.ExchangeService
-import org.springframework.http.ResponseEntity
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
-import java.math.BigDecimal
 
 @RestController
 @RequestMapping("/api/exchange")
 class ExchangeController(
     private val exchangeService: ExchangeService
 ) {
-
-    @PostMapping("/buy")
-    fun buy(
-        @RequestParam currencyCode: String,
-        @RequestParam amount: BigDecimal
-    ): ResponseEntity<ExchangeDTO> {
-        val userId = SecurityContextHolder.getContext().authentication.name.toLong()
-        val result = exchangeService.getBestBuyRate(userId, currencyCode, amount)
-
-        return ResponseEntity.ok(result)
+    // 임시 get 메소드로 환율 조회
+    @GetMapping("/buy")
+    fun buy(@RequestParam currencyCode: String): ExchangeDTO {
+        return exchangeService.getBestBuyRate(currencyCode)
     }
 
-    @PostMapping("/sell")
-    fun sell(
-        @RequestParam currencyCode: String,
-        @RequestParam amount: BigDecimal
-    ): ResponseEntity<ExchangeDTO> {
-        val userId = SecurityContextHolder.getContext().authentication.name.toLong()
-        val result = exchangeService.getBestSellRate(userId, currencyCode, amount)
-
-        return ResponseEntity.ok(result)
+    @GetMapping("/sell")
+    fun sell(@RequestParam currencyCode: String): ExchangeDTO {
+        return exchangeService.getBestSellRate(currencyCode)
     }
 
-    @PostMapping("/arbitrage")
-    fun arbitrage(
-        @RequestParam currencyCode: String,
-        @RequestParam amount: BigDecimal
-    ): ResponseEntity<Pair<ExchangeDTO, ExchangeDTO>> {
-        val userId = SecurityContextHolder.getContext().authentication.name.toLong()
-        val result = exchangeService.getBestBuySellRate(userId, currencyCode, amount)
-
-        return ResponseEntity.ok(result)
+    @GetMapping("/arbitrage")
+    fun arbitrage(@RequestParam currencyCode: String): Pair<ExchangeDTO, ExchangeDTO> {
+        return exchangeService.getBestArbitrageRate(currencyCode)
     }
+
+    // 실제 환전 버튼
+
 }

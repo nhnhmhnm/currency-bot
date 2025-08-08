@@ -1,12 +1,11 @@
 package org.example.backend.finance.repository
 
+import org.example.backend.common.util.toDTO
 import org.example.backend.enums.ExchangeType
 import org.example.backend.exchange.dto.ExchangeDTO
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.stereotype.Repository
-import java.math.BigDecimal
-import java.sql.ResultSet
 
 @Repository
 class ExchangeRateRateJdbcRepositoryImpl(
@@ -15,7 +14,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
     override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, buy_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -31,17 +30,17 @@ class ExchangeRateRateJdbcRepositoryImpl(
                 AND er.buy_rate IS NOT NULL
             ORDER BY er.buy_rate ASC
             LIMIT 1
-        """
+        """.trimIndent()
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
-            .firstOrNull()
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        }.firstOrNull()
     }
 
     override fun findBestSellRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, sell_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -57,17 +56,17 @@ class ExchangeRateRateJdbcRepositoryImpl(
                 AND er.sell_rate IS NOT NULL
             ORDER BY er.sell_rate DESC
             LIMIT 1
-        """
+        """.trimIndent()
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
-            .firstOrNull()
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        }.firstOrNull()
     }
 
     override fun findBestBuyBaseRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, base_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -82,17 +81,17 @@ class ExchangeRateRateJdbcRepositoryImpl(
                 )
             ORDER BY er.base_rate ASC
             LIMIT 1
-        """
+        """.trimIndent()
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
-            .firstOrNull()
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        }.firstOrNull()
     }
 
     override fun findBestSellBaseRate(currencyCode: String): ExchangeDTO? {
         val sql = """
-            SELECT * FROM exchange_rate er
+            SELECT bank_id, currency_id, base_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
             WHERE c.code = :currencyCode
                 AND er.notice_time BETWEEN (
@@ -107,25 +106,11 @@ class ExchangeRateRateJdbcRepositoryImpl(
                 )
             ORDER BY er.base_rate DESC
             LIMIT 1
-        """
+        """.trimIndent()
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY) }
-            .firstOrNull()
-    }
-
-    fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
-        return ExchangeDTO(
-            userId = -1,  // 나중에 실제 값 세팅
-            bankId = rs.getLong("bank_id"),
-            currencyId = rs.getLong("currency_id"),
-            exchangeRate = when (type) {
-                ExchangeType.BUY -> rs.getBigDecimal("buy_rate")
-                ExchangeType.SELL -> rs.getBigDecimal("sell_rate")
-            },
-            amount = BigDecimal.ZERO,  // 나중에 실제 값 세팅
-            type = type
-        )
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        }.firstOrNull()
     }
 }

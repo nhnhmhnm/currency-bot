@@ -7,7 +7,7 @@ import org.springframework.data.repository.query.Param
 import java.math.BigDecimal
 
 interface WalletRepository : JpaRepository<Wallet, Long> {
-    fun findByUserIdAndCurrencyId(userId: Long, currencyId: Long): Wallet?
+    fun findByUserIdAndCurrencyId(userId: Long, currencyId: Long): Wallet
 
     @Query("""
         SELECT w.balance FROM Wallet w 
