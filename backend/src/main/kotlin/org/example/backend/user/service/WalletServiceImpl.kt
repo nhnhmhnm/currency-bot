@@ -1,7 +1,6 @@
 package org.example.backend.user.service
 
 import org.example.backend.enums.UserType
-import org.example.backend.user.repository.AccountJdbcTemplateRepository
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
@@ -9,11 +8,11 @@ import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 
 @Service
-@Transactional
 class WalletServiceImpl(
   private val walletRepository: WalletRepository,
-  private val accountRepository: AccountJdbcTemplateRepository
+  private val accountRepository: AccountRepository
 ) : WalletService {
+  @Transactional
   override fun connectAccount(userId: Long, bankId: Long, accountNum: String) {
     // 계좌 조회 (은행 번호 + 계좌 번호)
     val account = accountRepository.findByBankIdAndAccountNum(bankId, accountNum)
@@ -37,6 +36,7 @@ class WalletServiceImpl(
     return walletRepository.findBalanceByUserIdAndCurrencyId(userId, currencyId)
   }
 
+  @Transactional
   override fun depositFromAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
     // 유저 지갑 조회
     val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
@@ -47,7 +47,7 @@ class WalletServiceImpl(
       ?: throw IllegalArgumentException("지갑에 연결된 계좌가 없습니다.")
 
     // SUPER 계정 찾기
-    val superAccount = accountRepository.findSuperByCurrencyIdAndUserType(currencyId, UserType.SUPER)
+    val superAccount = accountRepository.findByCurrencyIdAndUser_Type(currencyId, UserType.SUPER)
       ?: throw IllegalArgumentException("SUPER 계좌를 찾을 수 없습니다.")
 
     // 금액 검증
@@ -60,6 +60,7 @@ class WalletServiceImpl(
     superAccount.balance = superAccount.balance.plus(amount)
 
     // SUPER 계좌에서 입금 확인 후, 지갑에 금액 충전
+    superAccount.balance = superAccount.balance.minus(amount)
     wallet.balance = wallet.balance.plus(amount)
 
     accountRepository.save(userAccount)
@@ -69,6 +70,7 @@ class WalletServiceImpl(
     return wallet.balance
   }
 
+  @Transactional
   override fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
     // 지갑 조회
     val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)

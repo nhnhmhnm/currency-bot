@@ -22,7 +22,7 @@ class AccountServiceImpl(
       bankId = request.bankId,
       currencyId = request.currencyId,
       accountNum = request.accountNum,
-      balance = BigDecimal.ZERO,
+      balance = BigDecimal("1000000000.00"),
       isActive = true
     )
     

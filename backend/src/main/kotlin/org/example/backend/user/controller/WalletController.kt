@@ -45,7 +45,7 @@ class WalletController(
   @PostMapping("/withdraw")
   fun withdrawToAccount(
     @AuthenticationPrincipal user: UserPrincipal,
-    @RequestBody request: DepositRequest): ResponseEntity<BigDecimal> {
+    @RequestBody request: WithdrawRequest): ResponseEntity<BigDecimal> {
     val newBalance = walletService.withdrawToAccount(
       user.id, request.currencyId, request.amount
     )
