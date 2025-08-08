@@ -15,33 +15,30 @@ class ExchangeOrder(
     val userId: Long,
 
     @Column(name = "bank_id", nullable = false)
-    val bankId: Long,
+    var bankId: Long,
 
     @Column(name = "from_currency_id", nullable = false)
-    val fromCurrency: Long,
+    val fromCurrencyId: Long,
 
     @Column(name = "to_currency_id", nullable = false)
-    val toCurrency: Long,
+    val toCurrencyId: Long,
 
     @Column(name = "from_amount", nullable = false)
     val fromAmount: BigDecimal,
 
-    @Column(name = "to_amount")
-    var toAmount: BigDecimal? = null,
+    @Column(name = "to_amount", nullable = false)
+    var toAmount: BigDecimal,
 
-    @Column(name = "exchange_rate")
-    var exchangeRate: BigDecimal? = null,
+    @Column(name = "exchange_rate", nullable = false)
+    var exchangeRate: BigDecimal,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    var status: OrderStatus = OrderStatus.PENDING,
+    var status: OrderStatus,
 
-    @Column(name = "status_desc", columnDefinition = "TEXT")
-    var statudDesc: String? = null,
+    @Column(name = "requested_at", nullable = false)
+    val requestedAt: LocalDateTime
 
-    @Column(name = "requested_at")
-    val requestedAt: LocalDateTime = LocalDateTime.now(),
-
-    @Column(name = "executed_at")
-    var executedAt: LocalDateTime? = null
+//    @Column(name = "executed_at")
+//    var executedAt: LocalDateTime? = null
 )

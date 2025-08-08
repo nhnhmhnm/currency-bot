@@ -1,7 +1,6 @@
 package org.example.backend.exchange.domain
 
 import jakarta.persistence.*
-import org.example.backend.finance.domain.Currency
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -20,13 +19,11 @@ class Transaction(
     @Column(name = "order_id", nullable = false)
     val orderId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "from_currency_id")
-    val fromCurrency: Currency,
+    @Column(name = "from_currency_id", nullable = false)
+    val fromCurrencyId: Long,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "to_currency_id")
-    val toCurrency: Currency,
+    @Column(name = "to_currency_id", nullable = false)
+    val toCurrencyId: Long,
 
     @Column(name = "from_amount", nullable = false)
     val fromAmount: BigDecimal,
@@ -34,26 +31,23 @@ class Transaction(
     @Column(name = "to_amount", nullable = false)
     val toAmount: BigDecimal,
 
-    @Column(name = "exchange_rate")
-    val exchangeRate: BigDecimal? = null,
+    @Column(name = "exchange_rate", nullable = false)
+    val exchangeRate: BigDecimal,
 
-    @Column(name = "commission_rate")
-    val commissionRate: BigDecimal? = null,
+    // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
+    @Column(name = "commission_currency_id")
+    val commissionCurrencyId: Long? = null,
 
     @Column(name = "commission_amount")
     val commissionAmount: BigDecimal? = null,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "commission_currency_id")
-    val commissionCurrency: Currency? = null,
+    // profit : 환전으로 인해 소수점 이하가 발생하는 경우, 그 차액 (은행이 받는 이익)
+    @Column(name = "profit_currency_id")
+    val profitCurrencyId: Long? = null,
 
     @Column(name = "profit")
     val profit: BigDecimal? = null,
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "profit_currency_id")
-    val profitCurrency: Currency? = null,
-
-    @Column(name = "created_at")
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    @Column(name = "created_at", nullable = false)
+    val createdAt: LocalDateTime
 )
