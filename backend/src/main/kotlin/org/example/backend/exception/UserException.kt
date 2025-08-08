@@ -4,5 +4,9 @@ import org.springframework.http.HttpStatus
 
 class UserException (
   val status: HttpStatus,
-  val errorCode: ErrorCode
-) : RuntimeException(errorCode.message)
+  val errorCode: Int,
+  override val message: String?,
+) : RuntimeException() {
+    constructor(errorCode: ErrorCode, message: String? = null)
+            : this(errorCode.httpStatus, errorCode.code, message ?: errorCode.message)
+}

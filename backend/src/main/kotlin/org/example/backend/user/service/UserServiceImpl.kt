@@ -33,7 +33,7 @@ class UserServiceImpl (
   @Transactional
   override fun createUser(request: UserSignupRequest): UserSignupResponse {
     if (userRepository.existsByDevice(request.device)) {
-      throw UserException(HttpStatus.BAD_REQUEST, ErrorCode.DUPLICATED_USER_DEVICE)
+      throw UserException(ErrorCode.DUPLICATED_USER_DEVICE)
     }
 
     val user = User(
@@ -57,7 +57,7 @@ class UserServiceImpl (
     walletRepository.saveAll(wallets)
 
     return UserSignupResponse(
-      id = savedUser.id ?: throw UserException(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCode.FAILED_TO_CREATE_USER_ID),
+      id = savedUser.id ?: throw UserException(ErrorCode.FAILED_TO_CREATE_USER_ID),
       device = savedUser.device,
       name = savedUser.name,
       phone = savedUser.phone,
