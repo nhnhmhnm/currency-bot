@@ -3,6 +3,7 @@ package org.example.backend.exchange.service
 import org.example.backend.common.util.toDTO
 import org.example.backend.exchange.domain.Transaction
 import org.example.backend.exchange.dto.TransactionCommand
+import org.example.backend.exchange.dto.TransactionResponse
 import org.example.backend.exchange.repository.TransactionRepository
 import org.springframework.stereotype.Service
 
@@ -10,20 +11,20 @@ import org.springframework.stereotype.Service
 class TransactionServiceImpl(
     private val transactionRepository: TransactionRepository
 ): TransactionService {
-    override fun record(transactionCommand: TransactionCommand): TransactionCommand {
+    override fun record(dto: TransactionCommand): TransactionResponse {
         val entity = Transaction(
-            userId = transactionCommand.userId,
-            walletId = transactionCommand.walletId,
-            orderId = transactionCommand.orderId,
-            fromCurrencyId = transactionCommand.fromCurrencyId,
-            toCurrencyId = transactionCommand.toCurrencyId,
-            fromAmount = transactionCommand.fromAmount,
-            toAmount = transactionCommand.toAmount,
-            exchangeRate = transactionCommand.exchangeRate,
-            commissionCurrencyId = transactionCommand.commissionCurrencyId,
-            commissionAmount = transactionCommand.commissionAmount,
-            profitCurrencyId = transactionCommand.profitCurrencyId,
-            profit = transactionCommand.profit
+            userId = dto.userId,
+            walletId = dto.walletId,
+            orderId = dto.orderId,
+            fromCurrencyId = dto.fromCurrencyId,
+            toCurrencyId = dto.toCurrencyId,
+            fromAmount = dto.fromAmount,
+            toAmount = dto.toAmount,
+            exchangeRate = dto.exchangeRate,
+            commissionCurrencyId = dto.commissionCurrencyId,
+            commissionAmount = dto.commissionAmount,
+            profitCurrencyId = dto.profitCurrencyId,
+            profit = dto.profit
         )
         val saved = transactionRepository.save(entity)
 
