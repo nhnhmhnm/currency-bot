@@ -2,14 +2,16 @@ package org.example.backend.exchange.domain
 
 import jakarta.persistence.*
 import org.example.backend.enums.OrderStatus
+import org.hibernate.annotations.CreationTimestamp
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @Entity
 @Table(name = "exchange_order")
 class ExchangeOrder(
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    val id: Long = 0,
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = null,
 
     @Column(name = "user_id", nullable = false)
     val userId: Long,
@@ -36,8 +38,9 @@ class ExchangeOrder(
     @Column(name = "status", nullable = false)
     var status: OrderStatus,
 
-    @Column(name = "requested_at", nullable = false)
-    val requestedAt: LocalDateTime
+    @CreationTimestamp
+    @Column(name = "requested_at", nullable = false, updatable = false)
+    val requestedAt: LocalDateTime? = null
 
 //    @Column(name = "executed_at")
 //    var executedAt: LocalDateTime? = null
