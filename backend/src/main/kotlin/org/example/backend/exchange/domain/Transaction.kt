@@ -15,8 +15,8 @@ class Transaction(
     @Column(name = "user_id", nullable = false)
     val userId: Long,
 
-    @Column(name = "wallet_id", nullable = false)
-    val walletId: Long,
+//    @Column(name = "wallet_id", nullable = false)
+//    val walletId: Long,
 
     @Column(name = "order_id", nullable = false)
     val orderId: Long,

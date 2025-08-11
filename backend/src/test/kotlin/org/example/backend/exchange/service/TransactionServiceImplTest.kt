@@ -20,7 +20,7 @@ class TransactionServiceImplTest : BehaviorSpec({
     Given("TransactionDTO가 주어졌을 때") {
          val dto = TransactionCommand(
              userId = 1L,
-             walletId = 2L,
+//             walletId = 2L,
              orderId = 3L,
              fromCurrencyId = 1L,
              toCurrencyId = 3L,
@@ -40,7 +40,7 @@ class TransactionServiceImplTest : BehaviorSpec({
         val savedTransaction = Transaction(
              id = 99L,
              userId = dto.userId,
-             walletId = dto.walletId,
+//             walletId = dto.walletId,
              orderId = dto.orderId,
              fromCurrencyId = dto.fromCurrencyId,
              toCurrencyId = dto.toCurrencyId,
@@ -62,7 +62,7 @@ class TransactionServiceImplTest : BehaviorSpec({
             Then("repository.save에 DTO가 올바르게 매핑되어 전달된다.") {
                 // 입력 → 엔티티 매핑 검증
                 savedArg.captured.userId shouldBe dto.userId
-                savedArg.captured.walletId shouldBe dto.walletId
+//                savedArg.captured.walletId shouldBe dto.walletId
                 savedArg.captured.orderId shouldBe dto.orderId
                 savedArg.captured.fromCurrencyId shouldBe dto.fromCurrencyId
                 savedArg.captured.toCurrencyId shouldBe dto.toCurrencyId
@@ -81,7 +81,7 @@ class TransactionServiceImplTest : BehaviorSpec({
                 // 결과 → 저장 결과 객체로 비교
                 result.id shouldBe savedTransaction.id
                 result.userId shouldBe savedTransaction.userId
-                result.walletId shouldBe savedTransaction.walletId
+//                result.walletId shouldBe savedTransaction.walletId
                 result.orderId shouldBe savedTransaction.orderId
                 result.fromCurrencyId shouldBe savedTransaction.fromCurrencyId
                 result.toCurrencyId shouldBe savedTransaction.toCurrencyId

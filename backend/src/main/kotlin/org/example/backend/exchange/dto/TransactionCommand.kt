@@ -4,7 +4,7 @@ import java.math.BigDecimal
 
 data class TransactionCommand(
     val userId: Long,
-    val walletId: Long,
+//    val walletId: Long,
 
     val orderId: Long,
 
