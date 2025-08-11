@@ -72,16 +72,6 @@ class ExchangeOrderServiceImpl(
 
 
 
-        walletService.settleFxBuy(
-            orderId = orderId,
-            userId = userId,
-            fromCurrencyId = requireNotNull(fromCurrency.id),
-            toCurrencyId = requireNotNull(toCurrency.id),
-            amount = amount,
-            commissionAmount = commissionAmount,
-            toAmount = toAmount
-        )
-
         // 4. 더티 체킹으로 주문 SUCCESS 업데이트
         savedOrder.status = OrderStatus.SUCCESS
 

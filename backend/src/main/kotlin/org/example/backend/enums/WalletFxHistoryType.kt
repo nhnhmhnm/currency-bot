@@ -5,5 +5,7 @@ enum class WalletFxHistoryType(
     val value: String
 ) {
     FX_BUY("FX_BUY", "외화 구매"),
-    FX_SELL("FX_SELL", "외화 판매")
+    FX_SELL("FX_SELL", "외화 판매"),
+    COMMISSION("COMMISSION", "수수료"),
+    PROFIT("PROFIT", "차익")
 }
