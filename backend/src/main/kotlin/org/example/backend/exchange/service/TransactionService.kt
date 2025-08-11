@@ -1,7 +1,7 @@
 package org.example.backend.exchange.service
 
-import org.example.backend.exchange.dto.TransactionDTO
+import org.example.backend.exchange.dto.TransactionCommand
 
 interface TransactionService {
-    fun record(transaction: TransactionDTO): TransactionDTO
+    fun record(transaction: TransactionCommand): TransactionCommand
 }
