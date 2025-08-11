@@ -67,9 +67,15 @@ class ExchangeOrderServiceImpl(
             val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
             val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, fromCurrency.id)
 
-            /*
-                3. 가상 금액 이동
-             */
+            // 3. 가상 금액 이동
+
+            // 유저 원화 지갑 -> 회사 원화 계좌 exchangeAmount, 회사 수수료 계좌 commissionAmount
+
+            // 회사 원화 계좌 -> 은행
+
+            // 은행 -> 회사 외화 계좌 toAmount, 은행 차익 bankProfit
+
+            // 회사 외화 계좌 -> 유저 외화 지갑 toAmount
 
 
             // 4. 더티 체킹으로 주문 SUCCESS 업데이트
@@ -175,9 +181,15 @@ class ExchangeOrderServiceImpl(
             val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
             val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, toCurrency.id)
 
-            /*
-            3. 가상 금액 이동
-             */
+            // 3. 가상 금액 이동
+
+            // 유저 외화 지갑 -> 회사 외화 계좌 amount
+
+            // 회사 외화 계좌 -> 은행 amount
+
+            // 은행 -> 회사 원화 계좌 rawToAmount, 은행 차익 bankProfit
+
+            // 회사 원화 계좌 -> 회사 수수료 계좌 commissionAmount, 회사 차익 계좌 profit, 유저 원화 지갑 toAmount
 
             // 4. 더티 체킹으로 주문 SUCCESS 업데이트
             savedOrder.status = OrderStatus.SUCCESS
