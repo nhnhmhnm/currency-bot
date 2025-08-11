@@ -1,6 +1,7 @@
 package org.example.backend.finance.domain
 
 import jakarta.persistence.*
+import java.math.BigDecimal
 
 @Entity
 @Table(name = "currency")
@@ -15,5 +16,8 @@ class Currency(
     val name: String,
 
     @Column(name = "scale", nullable = false)
-    val scale: Int
+    val scale: Int,
+
+    @Column(name = "unit", nullable = false)
+    val unit: BigDecimal
 )
