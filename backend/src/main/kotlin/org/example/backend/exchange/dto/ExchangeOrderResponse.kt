@@ -4,8 +4,8 @@ import org.example.backend.enums.OrderStatus
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
-data class ExchangeOrderDTO(
-    val id: Long? = null,
+data class ExchangeOrderResponse(
+    val id: Long?,
     val userId: Long,
     val bankId: Long,
 
@@ -16,6 +16,5 @@ data class ExchangeOrderDTO(
     val exchangeRate: BigDecimal,
 
     val status: OrderStatus,
-    val requestedAt: LocalDateTime? = null
-//    val executedAt: LocalDateTime? = null
+    val requestedAt: LocalDateTime?
 )

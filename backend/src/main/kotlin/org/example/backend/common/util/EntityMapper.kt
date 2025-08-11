@@ -5,9 +5,9 @@ import org.example.backend.exchange.domain.ExchangeLedger
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.domain.Transaction
 import org.example.backend.exchange.dto.ExchangeDTO
-import org.example.backend.exchange.dto.ExchangeLedgerDTO
-import org.example.backend.exchange.dto.ExchangeOrderDTO
-import org.example.backend.exchange.dto.TransactionDTO
+import org.example.backend.exchange.dto.ExchangeLedgerCommand
+import org.example.backend.exchange.dto.ExchangeOrderResponse
+import org.example.backend.exchange.dto.TransactionCommand
 import java.sql.ResultSet
 
 fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
@@ -19,7 +19,7 @@ fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
     )
 }
 
-fun ExchangeOrder.toDTO() = ExchangeOrderDTO(
+fun ExchangeOrder.toDTO() = ExchangeOrderResponse(
     id = this.id,
     userId = this.userId,
     bankId = this.bankId,
@@ -29,28 +29,22 @@ fun ExchangeOrder.toDTO() = ExchangeOrderDTO(
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
     status = this.status,
-    statusDesc = this.statusDesc,
     requestedAt = this.requestedAt,
-    executedAt = this.executedAt
 )
 
-fun ExchangeLedger.toDTO() = ExchangeLedgerDTO(
-    id = this.id,
+fun ExchangeLedger.toDTO() = ExchangeLedgerCommand(
     userId = this.userId,
-    walletId = this.walletId,
-    currencyId = this.currencyId,
-    amount = this.amount,
-    balance = this.balance,
+    fromCurrencyId = this.fromCurrencyId,
+    toCurrencyId = this.toCurrencyId,
+    fromAmount = this.fromAmount,
+    toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
-    commissionAmount = this.commissionAmount,
-    commissionRate = this.commissionRate,
     commissionCurrencyId = this.commissionCurrencyId,
+    commissionAmount = this.commissionAmount,
     type = this.type,
-    createdAt = this.createdAt
 )
 
-fun Transaction.toDTO() = TransactionDTO(
-    id = this.id,
+fun Transaction.toDTO() = TransactionCommand(
     userId = this.userId,
     walletId = this.walletId,
     orderId = this.orderId,
@@ -59,10 +53,8 @@ fun Transaction.toDTO() = TransactionDTO(
     fromAmount = this.fromAmount,
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
-    commissionRate = this.commissionRate,
-    commissionAmount = this.commissionAmount,
     commissionCurrencyId = this.commissionCurrencyId,
-    profit = this.profit,
+    commissionAmount = this.commissionAmount,
     profitCurrencyId = this.profitCurrencyId,
-    createdAt = this.createdAt
+    profit = this.profit,
 )

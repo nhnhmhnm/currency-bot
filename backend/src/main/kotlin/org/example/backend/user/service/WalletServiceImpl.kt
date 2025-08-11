@@ -12,6 +12,10 @@ class WalletServiceImpl(
   private val walletRepository: WalletRepository,
   private val accountRepository: AccountRepository
 ) : WalletService {
+  private fun getForUpdate(userId: Long, currencyId: Long) =
+    walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+      ?: error("지갑이 존재하지 않습니다. userId=$userId, currencyId=$currencyId")
+
   @Transactional
   override fun connectAccount(userId: Long, bankId: Long, accountNum: String) {
     // 계좌 조회 (은행 번호 + 계좌 번호)
@@ -95,5 +99,78 @@ class WalletServiceImpl(
     accountRepository.save(userAccount)
 
     return wallet.balance
+  }
+
+
+  /*
+  회사 계좌 수수료 계좌 1,차익 계좌 1, 유저 돈 받는 지갑 3
+
+  buy  fromAmount -> toAmount
+  유저 지갑에서 잔액이 fromAmount보다 더 있는지 확인하고
+  회사 지갑에 금액 이동(유저 - 회사 +) 원화
+
+  회사 지갑에서 잔액이 fromAmount보다 더 있는지 확인하고
+  회사 원화 -  외화 +
+
+  회사 외화 -> 유저 외화 +
+   */
+  @Transactional
+  override fun settleFxBuy(
+    orderId: Long,
+    userId: Long,
+    fromCurrencyId: Long,
+    toCurrencyId: Long,
+    amount: BigDecimal,
+    commissionAmount: BigDecimal,
+    toAmount: BigDecimal
+  ) {
+    val companyId = 1L // 회사(=SUPER) 사용자 ID
+
+    val userFrom = getForUpdate(userId, fromCurrencyId)      // 사용자 KRW
+    val userTo   = getForUpdate(userId, toCurrencyId)        // 사용자 외화
+    val companyFrom = getForUpdate(companyId, fromCurrencyId) // 회사 KRW
+
+    // 1) 사용자 KRW 차감 (amount 전체)
+    require(userFrom.balance >= amount) { "지갑 잔액 부족" }
+    userFrom.balance -= amount
+
+    // 2) 회사 KRW 수수료 가산
+    if (commissionAmount > BigDecimal.ZERO) {
+      companyFrom.balance += commissionAmount
+    }
+
+    // 3) 사용자 외화 가산
+    userTo.balance += toAmount
+
+    // flush는 @Transactional 커밋 시 더티체킹으로 자동 반영
+  }
+
+  @Transactional
+  override fun settleFxSell(
+    orderId: Long,
+    userId: Long,
+    fromCurrencyId: Long,
+    toCurrencyId: Long,
+    amount: BigDecimal,
+    commissionAmount: BigDecimal,
+    toAmount: BigDecimal
+  ) {
+    val companyId = 1L
+
+    val userFrom = getForUpdate(userId, fromCurrencyId)      // 사용자 외화
+    val userTo   = getForUpdate(userId, toCurrencyId)        // 사용자 KRW
+    val companyTo = getForUpdate(companyId, toCurrencyId)    // 회사 KRW
+
+    // 1) 사용자 외화 차감
+    require(userFrom.balance >= amount) { "지갑 잔액 부족" }
+    userFrom.balance -= amount
+
+    // 2) 회사 KRW 수수료 가산
+    if (commissionAmount > BigDecimal.ZERO) {
+      companyTo.balance += commissionAmount
+    }
+
+    // 3) 사용자 KRW 가산
+    userTo.balance += toAmount
   }
 }

@@ -1,5 +1,6 @@
 package org.example.backend.exchange.dto
 
+import org.example.backend.enums.OrderType
 import java.math.BigDecimal
 
 data class ExchangeOrderRequest(
@@ -8,5 +9,3 @@ data class ExchangeOrderRequest(
     val currencyCode: String,
     val amount: BigDecimal
 )
-
-enum class OrderType { BUY, SELL, ARBITRAGE }

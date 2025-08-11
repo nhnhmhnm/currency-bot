@@ -60,9 +60,9 @@ class ExchangeServiceImpl(
         val toAmount = rawAmount.setScale(scale, RoundingMode.DOWN)
 
         // 차익
-        val bankProfit = rawAmount.subtract(toAmount)
+        val profit = rawAmount.subtract(toAmount)
 
-        return Pair(toAmount, bankProfit)
+        return Pair(toAmount, profit)
     }
 
 }

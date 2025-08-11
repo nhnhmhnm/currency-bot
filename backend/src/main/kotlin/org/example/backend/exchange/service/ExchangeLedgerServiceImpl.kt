@@ -2,7 +2,7 @@ package org.example.backend.exchange.service
 
 import org.example.backend.common.util.toDTO
 import org.example.backend.exchange.domain.ExchangeLedger
-import org.example.backend.exchange.dto.ExchangeLedgerDTO
+import org.example.backend.exchange.dto.ExchangeLedgerCommand
 import org.example.backend.exchange.repository.ExchangeLedgerRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -11,7 +11,7 @@ import java.time.LocalDateTime
 class ExchangeLedgerServiceImpl(
     private val exchangeLedgerRepository: ExchangeLedgerRepository,
 ): ExchangeLedgerService {
-    override fun record(ledgerDto: ExchangeLedgerDTO): ExchangeLedgerDTO {
+    override fun record(ledgerDto: ExchangeLedgerCommand): ExchangeLedgerCommand {
         val createdAt = LocalDateTime.now()
         val entity = ExchangeLedger(
             id = 0,

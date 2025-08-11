@@ -1,7 +1,7 @@
 package org.example.backend.exchange.service
 
-import org.example.backend.exchange.dto.ExchangeLedgerDTO
+import org.example.backend.exchange.dto.ExchangeLedgerCommand
 
 interface ExchangeLedgerService {
-    fun record(ledger: ExchangeLedgerDTO): ExchangeLedgerDTO
+    fun record(ledger: ExchangeLedgerCommand): ExchangeLedgerCommand
 }

@@ -2,8 +2,7 @@ package org.example.backend.exchange.dto
 
 import java.math.BigDecimal
 
-data class TransactionDTO(
-    val id: Long? = null,
+data class TransactionCommand(
     val userId: Long,
     val walletId: Long,
 
@@ -15,9 +14,8 @@ data class TransactionDTO(
     val toAmount: BigDecimal,
     val exchangeRate: BigDecimal,
 
-    val commissionCurrencyId: Long?,
-    val commissionAmount: BigDecimal?,
-    val profitCurrencyId: Long?,
-    val profit: BigDecimal?
+    val commissionCurrencyId: Long? = null,
+    val commissionAmount: BigDecimal? = null,
+    val profitCurrencyId: Long? = null,
+    val profit: BigDecimal? = null
 )
-

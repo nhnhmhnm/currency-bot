@@ -7,6 +7,14 @@ enum class ErrorCode (
   val code: Int,
   val message: String
 ) {
+  // USER 100
   DUPLICATED_USER_DEVICE(HttpStatus.BAD_REQUEST, 101, "duplicated user device"),
   FAILED_TO_CREATE_USER_ID(HttpStatus.INTERNAL_SERVER_ERROR, 102, "failed to create user id")
+
+  // WALLET 200
+
+  // ACCOUNT 300
+
+  // CURRENCY 400
+
 }
