@@ -1,7 +1,7 @@
 package org.example.backend.exchange.service
 
 import org.example.backend.common.util.RedisOrderQueue
-import org.example.backend.exchange.dto.OrderType
+import org.example.backend.enums.OrderType
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 
