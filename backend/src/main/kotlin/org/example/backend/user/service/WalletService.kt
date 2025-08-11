@@ -1,7 +1,5 @@
 package org.example.backend.user.service
 
-import jakarta.persistence.Id
-import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 
 interface WalletService {
@@ -37,13 +35,8 @@ interface WalletService {
 
     fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal): BigDecimal
 
-
-    /*
-    sell
-    회사  계좌 -> 회사 계좌
-    수수료 commissionAmount
-    회사 차익 profit
-     */
+    // 회사 계좌 -> 회사 계좌
+    // sell 후 환전된 금액에서 수수료, 차익을 계산하여 회사 계좌로 입금
     fun companyToCompany(fromAccountId: Long, toAccountId: Long, amount: BigDecimal): BigDecimal
 
     /*
@@ -58,7 +51,9 @@ interface WalletService {
      환전할 달러 toAmount 증가/감소
     환전된 금액 rawToAmount
      */
-    fun bankToCompany(accountId: Long, amount: BigDecimal): BigDecimal
+
+    // 은행에서 환전한 금액을 회사 계좌로 입금
+    fun bankToCompany(accountId: Long, bankId: Long, amount: BigDecimal): BigDecimal
 
 
 }
