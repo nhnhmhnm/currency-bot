@@ -2,12 +2,9 @@ package org.example.backend.exchange.dto
 
 import org.example.backend.enums.ExchangeLedgerType
 import java.math.BigDecimal
-import java.time.LocalDateTime
 
-data class ExchangeLedgerDTO(
-    val id: Long? = null,
+data class ExchangeLedgerCommand(
     val userId: Long,
-//    val walletId: Long,
 
     val fromCurrencyId: Long,
     val toCurrencyId: Long,
@@ -15,8 +12,8 @@ data class ExchangeLedgerDTO(
     val toAmount: BigDecimal,
     val exchangeRate: BigDecimal,
 
-    val commissionCurrencyId: Long?,
-    val commissionAmount: BigDecimal?,
+    val commissionCurrencyId: Long? = null,
+    val commissionAmount: BigDecimal? = null,
 
     val type: ExchangeLedgerType
 )
