@@ -16,9 +16,6 @@ class ExchangeLedger(
     @Column(name = "user_id", nullable = false)
     val userId: Long,
 
-//    @Column(name = "wallet_id", nullable = false)
-//    val walletId: Long,
-
     @Column(name = "from_currency_id", nullable = false)
     val fromCurrencyId: Long,
 
@@ -31,17 +28,14 @@ class ExchangeLedger(
     @Column(name = "to_amount", nullable = false)
     val toAmount: BigDecimal,
 
-//    @Column(nullable = false)
-//    val balance: BigDecimal,
-
     @Column(name = "exchange_rate", nullable = false)
     val exchangeRate: BigDecimal,
 
-//    @Column(name = "commission_rate")
-//    val commissionRate: BigDecimal?,
-
     @Column(name = "commission_currency_id", nullable = true)
     val commissionCurrencyId: Long? = null,
+
+    @Column(name = "commission_rate")
+    val commissionRate: BigDecimal?,
 
     @Column(name = "commission_amount", nullable = true)
     val commissionAmount: BigDecimal? = null,

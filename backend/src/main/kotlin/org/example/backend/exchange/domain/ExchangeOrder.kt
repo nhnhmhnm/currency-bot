@@ -41,7 +41,4 @@ class ExchangeOrder(
     @CreationTimestamp
     @Column(name = "requested_at", nullable = false, updatable = false)
     val requestedAt: LocalDateTime? = null
-
-//    @Column(name = "executed_at")
-//    var executedAt: LocalDateTime? = null
 )
