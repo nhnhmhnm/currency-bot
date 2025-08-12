@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 
 interface AccountRepository : JpaRepository<Account, Long> {
+  fun findByCurrencyIdAndAccountNum(currencyId: Long, accountNum: String): Account?
   fun findByUserIdAndCurrencyId(userId: Long, currencyId: Long): Account?
   fun findByBankIdAndAccountNum(bankId: Long, accountNum: String): Account?
   fun findByCurrencyIdAndUser_Type(currencyId: Long, type: UserType): Account?

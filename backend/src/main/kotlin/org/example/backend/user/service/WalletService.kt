@@ -19,7 +19,7 @@ interface WalletService {
     sell
     유저 최종 환전 금액 toAmount
      **/
-    fun companyToUser(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal
+    fun companyToUser(accountId: Long, userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal
 
     /**
      유저 지갑 -> 회사 계좌 withdrawToAccount

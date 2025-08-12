@@ -9,10 +9,10 @@ import org.example.backend.exchange.dto.ExchangeOrderResponse
 import org.example.backend.exchange.dto.TransactionCommand
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.repository.CurrencyRepository
+import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
 import org.example.backend.user.service.WalletService
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -25,7 +25,8 @@ class ExchangeOrderServiceImpl(
     private val ledgerService: ExchangeLedgerService,
     private val currencyRepository: CurrencyRepository,
     private val walletRepository: WalletRepository,
-    private val walletService: WalletService
+    private val walletService: WalletService,
+    private val accountRepository: AccountRepository
 ): ExchangeOrderService {
     val commission = BigDecimal("0.0005") // 0.05% 수수료
 
@@ -63,20 +64,30 @@ class ExchangeOrderServiceImpl(
                 fromAmount = exchangeAmount,
             )
 
-
-            val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
-            val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, fromCurrency.id)
-
             // 3. 가상 금액 이동
+            /*
+             * 회사 수수료 계좌 번호 : 1111
+             * 회사 차익 계좌 번호 : 2222
+             * 회사 KRW 계좌 번호 : 1111-11
+             * 회사 USD 계좌 번호 : 2222-22
+             * 회사 JPY 계좌 번호 : 3333-33
+             */
+            val companyCommissionAccount = accountRepository.findByCurrencyIdAndAccountNum(1, "1111")
+                ?: error("Company account not found")
+            val companyKRWAccount = accountRepository.findByCurrencyIdAndAccountNum(fromCurrency.id, "1111-11")
+                ?: error("Company KRW account not found")
+            val companyFXAccount = accountRepository.findByCurrencyIdAndAccountNum(toCurrency.id, "2222-22")
+                ?: error("Company USD account not found")
 
-            // 유저 원화 지갑 -> 회사 원화 계좌 exchangeAmount, 회사 수수료 계좌 commissionAmount
-
-            // 회사 원화 계좌 -> 은행
-
+            // 유저 원화 지갑 amount -> 회사 원화 계좌 exchangeAmount, 회사 수수료 계좌 commissionAmount
+            walletService.userToCompany(userId, fromCurrency.id, companyKRWAccount.id!!, exchangeAmount)
+            walletService.userToCompany(userId, fromCurrency.id, companyCommissionAccount.id!!, commissionAmount)
+            // 회사 원화 계좌 exchangeAmount -> 은행
+            walletService.bankToCompany(companyKRWAccount.id!!, fromCurrency.id, exchangeAmount.negate())
             // 은행 -> 회사 외화 계좌 toAmount, 은행 차익 bankProfit
-
+            walletService.bankToCompany(companyFXAccount.id!!, toCurrency.id, toAmount)
             // 회사 외화 계좌 -> 유저 외화 지갑 toAmount
-
+            walletService.companyToUser(companyFXAccount.id!!, userId, toCurrency.id, toAmount)
 
             // 4. 더티 체킹으로 주문 SUCCESS 업데이트
             savedOrder.status = OrderStatus.SUCCESS
@@ -171,25 +182,32 @@ class ExchangeOrderServiceImpl(
             )
 
             // 수수료 계산
-//            val commissionAmount = if (isArbitrage) BigDecimal.ZERO else rawToAmount.multiply(commission)
             val commissionAmount = rawToAmount.times(commission)  // 환전 수수료
             val tmpToAmount = rawToAmount.minus(commissionAmount) // 환전된 금액 - 수수료
 
             val toAmount = tmpToAmount.setScale(toCurrency.scale, RoundingMode.DOWN) // 유저가 실제 받는 금액
             val profit = tmpToAmount.minus(toAmount) // 회사 차익
 
-            val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
-            val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, toCurrency.id)
-
             // 3. 가상 금액 이동
+            val companyCommissionAccount = accountRepository.findByCurrencyIdAndAccountNum(1, "1111")
+                ?: error("Company account not found")
+            val companyProfitAccount = accountRepository.findByCurrencyIdAndAccountNum(1, "2222")
+                ?: error("Company commission account not found")
+            val companyKRWAccount = accountRepository.findByCurrencyIdAndAccountNum(fromCurrency.id, "1111-11")
+                ?: error("Company KRW account not found")
+            val companyFXAccount = accountRepository.findByCurrencyIdAndAccountNum(toCurrency.id, "2222-22")
+                ?: error("Company USD account not found")
 
             // 유저 외화 지갑 -> 회사 외화 계좌 amount
-
+            walletService.userToCompany(userId, fromCurrency.id, companyFXAccount.id!!, amount)
             // 회사 외화 계좌 -> 은행 amount
-
+            walletService.bankToCompany(companyFXAccount.id!!, bestRate.bankId, amount.negate())
             // 은행 -> 회사 원화 계좌 rawToAmount, 은행 차익 bankProfit
-
+            walletService.bankToCompany(companyKRWAccount.id!!, toCurrency.id, rawToAmount)
             // 회사 원화 계좌 -> 회사 수수료 계좌 commissionAmount, 회사 차익 계좌 profit, 유저 원화 지갑 toAmount
+            walletService.companyToCompany(companyKRWAccount.id!!, companyCommissionAccount.id!!, commissionAmount)
+            walletService.companyToCompany(companyKRWAccount.id!!, companyProfitAccount.id!!, profit)
+            walletService.companyToUser(companyKRWAccount.id!!, userId, toCurrency.id, toAmount)
 
             // 4. 더티 체킹으로 주문 SUCCESS 업데이트
             savedOrder.status = OrderStatus.SUCCESS
