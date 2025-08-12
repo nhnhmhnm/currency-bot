@@ -10,7 +10,6 @@ import org.example.backend.exchange.dto.TransactionCommand
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.user.repository.AccountRepository
-import org.example.backend.user.repository.WalletRepository
 import org.example.backend.user.service.WalletService
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -24,14 +23,13 @@ class ExchangeOrderServiceImpl(
     private val transactionService: TransactionService,
     private val ledgerService: ExchangeLedgerService,
     private val currencyRepository: CurrencyRepository,
-    private val walletRepository: WalletRepository,
     private val walletService: WalletService,
     private val accountRepository: AccountRepository
 ): ExchangeOrderService {
     val commission = BigDecimal("0.0005") // 0.05% 수수료
 
     @Transactional
-    override fun buyOrder(userId: Long, currencyCode: String, amount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse {
+    override fun buyOrder(userId: Long, currencyCode: String, fromAmount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse {
         // 통화 조회
         val fromCurrency = currencyRepository.findByCode("KRW")
         val toCurrency = currencyRepository.findByCode(currencyCode)
@@ -44,18 +42,19 @@ class ExchangeOrderServiceImpl(
                 bankId = bestRate.bankId,
                 fromCurrencyId = fromCurrency.id,
                 toCurrencyId = toCurrency.id,
-                fromAmount = amount,
+                fromAmount = fromAmount,
                 toAmount = BigDecimal.ZERO, // 임시값
                 exchangeRate = bestRate.bestRate,
                 status = OrderStatus.PENDING,
         )
 
         val savedOrder = exchangeOrderRepository.save(order) // 영속 상태
-        val orderId: Long = savedOrder.id ?: error("Order ID is null")
+        val orderId: Long = savedOrder.id!!
 
         return try {
-            val commissionAmount = if(isArbitrage) BigDecimal.ZERO else amount.times(commission) // 환전 수수료
-            val exchangeAmount = amount.minus(commissionAmount) // 실제 환전할 금액
+            val commissionAmount = if(isArbitrage) BigDecimal.ZERO else fromAmount.times(commission).setScale(0, RoundingMode.UP) // 환전 수수료 (정수부분까지 올림)
+
+            val exchangeAmount = fromAmount.minus(commissionAmount) // 실제 환전할 금액 = 환전된 금액 - 수수료
 
             val (toAmount, bankProfit) = exchangeService.calculateExchange(
                 fromCurrency = fromCurrency,
@@ -64,10 +63,11 @@ class ExchangeOrderServiceImpl(
                 fromAmount = exchangeAmount,
             )
 
+            savedOrder.toAmount = toAmount // 최종 환전된 금액
+
             // 3. 가상 금액 이동
             /*
              * 회사 수수료 계좌 번호 : 1111
-             * 회사 차익 계좌 번호 : 2222
              * 회사 KRW 계좌 번호 : 1111-11
              * 회사 USD 계좌 번호 : 2222-22
              * 회사 JPY 계좌 번호 : 3333-33
@@ -79,7 +79,7 @@ class ExchangeOrderServiceImpl(
             val companyFXAccount = accountRepository.findByCurrencyIdAndAccountNum(toCurrency.id, "2222-22")
                 ?: error("Company USD account not found")
 
-            // 유저 원화 지갑 amount -> 회사 원화 계좌 exchangeAmount, 회사 수수료 계좌 commissionAmount
+            // 유저 원화 지갑 fromAmount -> 회사 원화 계좌 exchangeAmount, 회사 수수료 계좌 commissionAmount
             walletService.userToCompany(userId, fromCurrency.id, companyKRWAccount.id!!, exchangeAmount)
             walletService.userToCompany(userId, fromCurrency.id, companyCommissionAccount.id!!, commissionAmount)
             // 회사 원화 계좌 exchangeAmount -> 은행
@@ -99,13 +99,13 @@ class ExchangeOrderServiceImpl(
                 orderId = orderId,
                 fromCurrencyId = fromCurrency.id,
                 toCurrencyId = toCurrency.id,
-                fromAmount = amount,
+                fromAmount = fromAmount,
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
-                commissionAmount = commissionAmount, // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
                 commissionCurrencyId = fromCurrency.id,
-                profitCurrencyId = toCurrency.id,
-                profit = BigDecimal.ZERO
+                commissionAmount = commissionAmount, // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
+                profitCurrencyId = null,
+                profit = null
             )
             transactionService.record(userToCompany)
 
@@ -133,7 +133,7 @@ class ExchangeOrderServiceImpl(
                 userId = userId,
                 fromCurrencyId = fromCurrency.id,
                 toCurrencyId = toCurrency.id,
-                fromAmount = amount,
+                fromAmount = fromAmount,
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
                 commissionCurrencyId = fromCurrency.id,
@@ -153,7 +153,7 @@ class ExchangeOrderServiceImpl(
     }
 
     @Transactional
-    override fun sellOrder(userId: Long, currencyCode: String, amount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse {
+    override fun sellOrder(userId: Long, currencyCode: String, fromAmount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse {
         // 통화 조회
         val fromCurrency = currencyRepository.findByCode(currencyCode)
         val toCurrency = currencyRepository.findByCode("KRW")
@@ -165,7 +165,7 @@ class ExchangeOrderServiceImpl(
             bankId = bestRate.bankId,
             fromCurrencyId = fromCurrency.id,
             toCurrencyId = toCurrency.id,
-            fromAmount = amount,
+            fromAmount = fromAmount,
             toAmount = BigDecimal.ZERO, // 임시값
             exchangeRate = bestRate.bestRate,
             status = OrderStatus.PENDING,
@@ -178,35 +178,31 @@ class ExchangeOrderServiceImpl(
                 fromCurrency = fromCurrency,
                 toCurrency = toCurrency,
                 exchangeRate = bestRate.bestRate,
-                fromAmount = amount,
+                fromAmount = fromAmount,
             )
 
             // 수수료 계산
-            val commissionAmount = rawToAmount.times(commission)  // 환전 수수료
-            val tmpToAmount = rawToAmount.minus(commissionAmount) // 환전된 금액 - 수수료
+            val commissionAmount = rawToAmount.times(commission).setScale(0, RoundingMode.UP)  // 환전 수수료 (정수부분까지 올림)
+            val toAmount = rawToAmount.minus(commissionAmount) // 실제 환전된 금액 = 환전된 금액 - 수수료
 
-            val toAmount = tmpToAmount.setScale(toCurrency.scale, RoundingMode.DOWN) // 유저가 실제 받는 금액
-            val profit = tmpToAmount.minus(toAmount) // 회사 차익
+            savedOrder.toAmount = toAmount // 최종 환전된 금액
 
             // 3. 가상 금액 이동
             val companyCommissionAccount = accountRepository.findByCurrencyIdAndAccountNum(1, "1111")
                 ?: error("Company account not found")
-            val companyProfitAccount = accountRepository.findByCurrencyIdAndAccountNum(1, "2222")
-                ?: error("Company commission account not found")
-            val companyKRWAccount = accountRepository.findByCurrencyIdAndAccountNum(fromCurrency.id, "1111-11")
+            val companyKRWAccount = accountRepository.findByCurrencyIdAndAccountNum(toCurrency.id, "1111-11")
                 ?: error("Company KRW account not found")
-            val companyFXAccount = accountRepository.findByCurrencyIdAndAccountNum(toCurrency.id, "2222-22")
+            val companyFXAccount = accountRepository.findByCurrencyIdAndAccountNum(fromCurrency.id, "2222-22")
                 ?: error("Company USD account not found")
 
-            // 유저 외화 지갑 -> 회사 외화 계좌 amount
-            walletService.userToCompany(userId, fromCurrency.id, companyFXAccount.id!!, amount)
-            // 회사 외화 계좌 -> 은행 amount
-            walletService.bankToCompany(companyFXAccount.id!!, bestRate.bankId, amount.negate())
+            // 유저 외화 지갑 -> 회사 외화 계좌 fromAmount
+            walletService.userToCompany(userId, fromCurrency.id, companyFXAccount.id!!, fromAmount)
+            // 회사 외화 계좌 -> 은행 fromAmount
+            walletService.bankToCompany(companyFXAccount.id!!, bestRate.bankId, fromAmount.negate())
             // 은행 -> 회사 원화 계좌 rawToAmount, 은행 차익 bankProfit
             walletService.bankToCompany(companyKRWAccount.id!!, toCurrency.id, rawToAmount)
-            // 회사 원화 계좌 -> 회사 수수료 계좌 commissionAmount, 회사 차익 계좌 profit, 유저 원화 지갑 toAmount
+            // 회사 원화 계좌 -> 회사 수수료 계좌 commissionAmount, 유저 원화 지갑 toAmount
             walletService.companyToCompany(companyKRWAccount.id!!, companyCommissionAccount.id!!, commissionAmount)
-            walletService.companyToCompany(companyKRWAccount.id!!, companyProfitAccount.id!!, profit)
             walletService.companyToUser(companyKRWAccount.id!!, userId, toCurrency.id, toAmount)
 
             // 4. 더티 체킹으로 주문 SUCCESS 업데이트
@@ -219,13 +215,13 @@ class ExchangeOrderServiceImpl(
                 orderId = orderId,
                 fromCurrencyId = fromCurrency.id,
                 toCurrencyId = toCurrency.id,
-                fromAmount = amount,
+                fromAmount = fromAmount,
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
-                commissionAmount = commissionAmount, // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
                 commissionCurrencyId = fromCurrency.id,
-                profitCurrencyId = toCurrency.id,
-                profit = profit
+                commissionAmount = commissionAmount, // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
+                profitCurrencyId = null,
+                profit = null
             )
             transactionService.record(userToCompany)
 
@@ -235,7 +231,7 @@ class ExchangeOrderServiceImpl(
                 orderId = orderId,
                 fromCurrencyId = fromCurrency.id,
                 toCurrencyId = toCurrency.id,
-                fromAmount = amount,
+                fromAmount = fromAmount,
                 toAmount = rawToAmount,
                 exchangeRate = bestRate.bestRate,
 
@@ -253,7 +249,7 @@ class ExchangeOrderServiceImpl(
                 userId = userId,
                 fromCurrencyId = fromCurrency.id,
                 toCurrencyId = toCurrency.id,
-                fromAmount = amount,
+                fromAmount = fromAmount,
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
                 commissionCurrencyId = fromCurrency.id,
@@ -273,15 +269,15 @@ class ExchangeOrderServiceImpl(
     }
 
     @Transactional
-    override fun arbitrageOrder(userId: Long, currencyCode: String, amount: BigDecimal, isArbitrage: Boolean): Pair<ExchangeOrderResponse, ExchangeOrderResponse> {
+    override fun arbitrageOrder(userId: Long, currencyCode: String, fromAmount: BigDecimal, isArbitrage: Boolean): Pair<ExchangeOrderResponse, ExchangeOrderResponse> {
         // 1. BuyOrder 실행: KRW → 외화
-        val buy = buyOrder(userId, currencyCode, amount, true)
+        val buy = buyOrder(userId, currencyCode, fromAmount, true)
 
         if (buy.status != OrderStatus.SUCCESS) {
             // 매수 실패/취소면 매도는 수행하지 않고 바로 리턴
             return Pair(buy, buy)
         }
-        // 2. SellOrder 실행: 외화 → KRW (amount : 방금 매수한 외화)
+        // 2. SellOrder 실행: 외화 → KRW (fromAmount : 방금 매수한 외화)
         val sell = sellOrder(userId, currencyCode, buy.toAmount, true)
 
         return Pair(buy, sell)

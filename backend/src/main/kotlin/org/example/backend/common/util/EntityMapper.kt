@@ -17,7 +17,7 @@ fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
 }
 
 fun ExchangeOrder.toDTO() = ExchangeOrderResponse(
-    id = requireNotNull(this.id),
+    id = this.id!!,
     userId = this.userId,
     bankId = this.bankId,
     fromCurrencyId = this.fromCurrencyId,
@@ -26,26 +26,26 @@ fun ExchangeOrder.toDTO() = ExchangeOrderResponse(
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
     status = this.status,
-    requestedAt = requireNotNull(this.requestedAt)
+    requestedAt = this.requestedAt!!
 )
 
 fun ExchangeLedger.toDTO() = ExchangeLedgerResponse(
-    id = requireNotNull(this.id),
+    id = this.id!!,
     userId = this.userId,
     fromCurrencyId = this.fromCurrencyId,
     toCurrencyId = this.toCurrencyId,
     fromAmount = this.fromAmount,
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
-    commissionCurrencyId = requireNotNull(this.commissionCurrencyId),
-    commissionRate = requireNotNull(this.commissionRate),
-    commissionAmount = requireNotNull(this.commissionAmount),
+    commissionCurrencyId = this.commissionCurrencyId,
+    commissionRate = this.commissionRate,
+    commissionAmount = this.commissionAmount,
     type = this.type,
-    createdAt = requireNotNull(this.createdAt)
+    createdAt = this.createdAt!!
 )
 
 fun Transaction.toDTO() = TransactionResponse(
-    id = requireNotNull(this.id),
+    id = this.id!!,
     userId = this.userId,
 //    walletId = this.walletId,
     orderId = this.orderId,
@@ -54,9 +54,9 @@ fun Transaction.toDTO() = TransactionResponse(
     fromAmount = this.fromAmount,
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
-    commissionCurrencyId = requireNotNull(this.commissionCurrencyId),
-    commissionAmount = requireNotNull(this.commissionAmount),
-    profitCurrencyId = requireNotNull(this.profitCurrencyId),
-    profit = requireNotNull(this.profit),
-    createdAt = requireNotNull(this.createdAt)
+    commissionCurrencyId = this.commissionCurrencyId,
+    commissionAmount = this.commissionAmount,
+    profitCurrencyId = this.profitCurrencyId,
+    profit = this.profit,
+    createdAt = this.createdAt!!
 )

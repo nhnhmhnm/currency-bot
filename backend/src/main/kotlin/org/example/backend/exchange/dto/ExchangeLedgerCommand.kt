@@ -14,7 +14,7 @@ data class ExchangeLedgerCommand(
 
     val commissionCurrencyId: Long?,
     val commissionRate: BigDecimal?,
-    val commissionAmount: BigDecimal? = null,
+    val commissionAmount: BigDecimal?,
 
     val type: ExchangeLedgerType
 )

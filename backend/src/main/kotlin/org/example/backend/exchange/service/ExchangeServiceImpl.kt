@@ -40,28 +40,35 @@ class ExchangeServiceImpl(
         return dto
     }
 
-    override fun calculateExchange(fromCurrency: Currency, toCurrency: Currency, exchangeRate: BigDecimal, fromAmount: BigDecimal): Pair<BigDecimal, BigDecimal> {
-        // 환율 1단위로 조정
-        val rate = exchangeRate.divide(fromCurrency.unit, 10, RoundingMode.DOWN)
+    override fun calculateExchange(fromCurrency: Currency, toCurrency: Currency,
+                                   exchangeRate: BigDecimal, fromAmount: BigDecimal): Pair<BigDecimal, BigDecimal> {
+        val isKrwToFx = fromCurrency.code.equals("KRW", true)
 
-        val rawAmount =
-            if (fromCurrency.code == "KRW") {
-            // KRW → 외화 (Buy)
-            fromAmount.divide(rate, 10, RoundingMode.DOWN)
-            }
-            else if (toCurrency.code == "KRW") {
-            // 외화 → KRW (Sell)
-            fromAmount.times(rate)
+        // 환율을 '1 단위(to/from 통화) 기준'으로 정규화
+        val ratePerOne = when {
+            // KRW → 외화(BUY): toCurrency.unit으로 나눠 1단위 외화 기준 KRW 가격으로 맞춤
+            isKrwToFx -> exchangeRate.divide(toCurrency.unit, 10, RoundingMode.DOWN)
+
+            // 외화 → KRW(SELL): fromCurrency.unit으로 나눠 1단위 외화 기준 KRW 가격으로 맞춤
+            toCurrency.code.equals("KRW", true) -> exchangeRate.divide(fromCurrency.unit, 10, RoundingMode.DOWN)
+
+            else -> throw IllegalArgumentException("지원하지 않는 환전 방향입니다")
+        }
+
+        val roundedToAmount =
+            if (isKrwToFx) {
+                // KRW → 외화: KRW / (KRW per 1 FX) = FX
+                fromAmount.divide(ratePerOne, 10, RoundingMode.DOWN)
             }
             else {
-                throw IllegalArgumentException("지원하지 않는 환전 방향입니다")
+                // 외화 → KRW: FX * (KRW per 1 FX) = KRW
+                fromAmount.multiply(ratePerOne)
             }
 
-        // 환전 금액
-        val toAmount = rawAmount.setScale(toCurrency.scale, RoundingMode.DOWN)
-        // 차익
-        val profit = rawAmount.minus(toAmount)
+        // 통화 스케일에 맞춰 절사 + 절사 차익(은행 이익) 계산
+        val toAmount = roundedToAmount.setScale(toCurrency.scale, RoundingMode.DOWN)
+        val profit = roundedToAmount.subtract(toAmount)
 
-        return Pair(toAmount, profit)
+        return toAmount to profit
     }
 }
