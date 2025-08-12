@@ -10,7 +10,7 @@ interface WalletService {
     fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal // 지갑에서 연결된 계좌로 출금
 
 
-    /*
+    /**
      회사 계좌 -> 유저 지갑 depositFromAccount
 
      buy
@@ -18,10 +18,10 @@ interface WalletService {
 
     sell
     유저 최종 환전 금액 toAmount
-     */
+     **/
     fun companyToUser(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal
 
-    /*
+    /**
      유저 지갑 -> 회사 계좌 withdrawToAccount
 
     buy
@@ -31,8 +31,7 @@ interface WalletService {
     sell
     환전할 달러 toAmount
 
-     */
-
+     **/
     fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal): BigDecimal
 
     // 회사 계좌 -> 회사 계좌
