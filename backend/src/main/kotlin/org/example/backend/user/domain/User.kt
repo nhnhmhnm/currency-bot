@@ -16,7 +16,7 @@ import java.time.LocalDateTime
 class User (
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  val id: Long,
+  val id: Long? = null,
 
   @Column(name = "device", nullable = false, unique = true)
   val device: String,

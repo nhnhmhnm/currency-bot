@@ -1,5 +1,7 @@
 package org.example.backend.user.service
 
+import org.example.backend.exception.ErrorCode
+import org.example.backend.exception.UserException
 import org.example.backend.user.domain.Account
 import org.example.backend.user.dto.AccountCreateRequest
 import org.example.backend.user.repository.AccountRepository
@@ -13,7 +15,7 @@ class AccountServiceImpl(
   override fun createAccount(request: AccountCreateRequest) {
     // 중복 계좌 확인
     if (accountRepository.findByUserIdAndCurrencyId(userId = request.userid, currencyId = request.currencyId) != null) {
-      throw IllegalArgumentException("이미 등록된 계좌가 있습니다.")
+      throw UserException(ErrorCode.DUPLICATED_ACCOUNT)
     }
 
     // 객체 생성

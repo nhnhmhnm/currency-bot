@@ -15,8 +15,6 @@ import org.example.backend.user.dto.UserSignupRequest
 import org.example.backend.user.dto.UserSignupResponse
 import org.example.backend.user.repository.UserRepository
 import org.example.backend.user.repository.WalletRepository
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.http.HttpStatus
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 
@@ -49,9 +47,9 @@ class UserServiceImpl (
     // 통화별 기본 wallet 생성
     val currencies = listOf("KRW", "USD", "JPY")
     val wallets = currencies.map { code ->
-      val currency = currencyRepository.findByCode(code) ?: throw IllegalArgumentException("잘못된 통화 코드")
+      val currency = currencyRepository.findByCode(code)
 
-      Wallet(userId = savedUser.id!!, currencyId = currency.id!!, isConnected = false)
+      Wallet(userId = savedUser.id!!, currencyId = currency.id, isConnected = false)
     }
 
     walletRepository.saveAll(wallets)
@@ -69,10 +67,10 @@ class UserServiceImpl (
 
   override fun login(request: UserLoginRequest): TokenResponse {
     val user = userRepository.findByDevice(request.device)
-      ?: throw IllegalArgumentException("존재하지 않는 사용자")
+      ?: throw UserException(ErrorCode.USER_NOT_FOUND)
 
     if (!passwordEncoder.matches(request.password, user.password)) {
-      throw IllegalArgumentException("비밀번호 불 일치")
+      throw UserException(ErrorCode.INCORRECT_PASSWORD)
     }
 
     // Token 생성
@@ -88,7 +86,7 @@ class UserServiceImpl (
 
   override fun getMyInfo(userId: Long): UserMeResponse {
     val user = userRepository.findById(userId)
-      .orElseThrow{ IllegalArgumentException("존재하지 않는 사용자") }
+      .orElseThrow{ UserException(ErrorCode.USER_NOT_FOUND) }
 
     return UserMeResponse(userId, user.device, user.name, user.phone,
       user.type, user.isActive, user.createdAt)
