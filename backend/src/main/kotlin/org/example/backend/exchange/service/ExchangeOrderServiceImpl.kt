@@ -37,6 +37,11 @@ class ExchangeOrderServiceImpl(
         // 환전 계산
         val bestRate = if (isArbitrage) exchangeService.getBestBuyBaseRate(currencyCode) else exchangeService.getBestBuyRate(currencyCode)
 
+        require(fromAmount < bestRate.bestRate.times(toCurrency.unit)) {
+            // 최소 환전 금액 미달 시 예외 처리
+            "Minimum exchange amount not met for $currencyCode"
+        }
+
         val order = ExchangeOrder(
                 userId = userId,
                 bankId = bestRate.bankId,
@@ -159,6 +164,11 @@ class ExchangeOrderServiceImpl(
         val toCurrency = currencyRepository.findByCode("KRW")
 
         val bestRate = if (isArbitrage) exchangeService.getBestSellBaseRate(currencyCode) else exchangeService.getBestSellRate(currencyCode)
+
+        require(fromAmount < toCurrency.unit) {
+            // 최소 환전 금액 미달 시 예외 처리
+            "Minimum exchange amount not met for $currencyCode"
+        }
 
         val order = ExchangeOrder(
             userId = userId,

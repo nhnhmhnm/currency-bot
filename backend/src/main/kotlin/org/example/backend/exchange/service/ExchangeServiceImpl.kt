@@ -67,7 +67,9 @@ class ExchangeServiceImpl(
 
         // 통화 스케일에 맞춰 절사 + 절사 차익(은행 이익) 계산
         val toAmount = roundedToAmount.setScale(toCurrency.scale, RoundingMode.DOWN)
-        val profit = roundedToAmount.subtract(toAmount)
+
+        val profitRaw = roundedToAmount.subtract(toAmount)
+        val profit = if (profitRaw.signum() == 0) BigDecimal.ZERO else profitRaw.stripTrailingZeros()
 
         return toAmount to profit
     }
