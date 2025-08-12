@@ -5,7 +5,7 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 data class ExchangeOrderResponse(
-    val id: Long?,
+    val id: Long,
     val userId: Long,
     val bankId: Long,
 
@@ -16,5 +16,5 @@ data class ExchangeOrderResponse(
     val exchangeRate: BigDecimal,
 
     val status: OrderStatus,
-    val requestedAt: LocalDateTime?
+    val requestedAt: LocalDateTime
 )

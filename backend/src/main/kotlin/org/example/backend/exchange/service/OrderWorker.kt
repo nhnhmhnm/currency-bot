@@ -7,13 +7,12 @@ import org.springframework.stereotype.Service
 
 @Service
 class OrderWorker(
-    private val redisOrderQueue: RedisOrderQueue,
+    private val queue: RedisOrderQueue,
     private val exchangeOrderService: ExchangeOrderService
 ) {
     @Scheduled(fixedDelay = 500)
     fun processQueue() {
-        var req = redisOrderQueue.dequeue()
-
+        var req = queue.dequeue()
         while (req != null) {
             try {
                 when (req.type) {
@@ -22,9 +21,10 @@ class OrderWorker(
                     OrderType.ARBITRAGE -> exchangeOrderService.arbitrageOrder(req.userId, req.currencyCode, req.amount, true)
                 }
             } catch (e: Exception) {
-                // 실패시 DeadLetterQueue, 재시도, 로그 등
+                // 주문 처리 중 예외 발생 시 로깅하고 다음 요청으로 넘어감
+                // logger.error("Unexpected error while processing order request: $req", e)
             }
-            req = redisOrderQueue.dequeue()
+            req = queue.dequeue()
         }
     }
 }

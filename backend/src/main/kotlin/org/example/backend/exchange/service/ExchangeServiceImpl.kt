@@ -43,14 +43,18 @@ class ExchangeServiceImpl(
     override fun calculateExchange(fromCurrency: Currency, toCurrency: Currency, exchangeRate: BigDecimal, fromAmount: BigDecimal): Pair<BigDecimal, BigDecimal> {
         val scale = toCurrency.scale
 
+        // 환율 1단위로 조정
+        val rate = exchangeRate.divide(fromCurrency.unit, 10, RoundingMode.DOWN)
+
+
         val rawAmount =
             if (fromCurrency.code == "KRW") {
             // KRW → 외화 (Buy)
-            fromAmount.divide(exchangeRate, 10, RoundingMode.DOWN)
+            fromAmount.divide(rate, 10, RoundingMode.DOWN)
             }
             else if (toCurrency.code == "KRW") {
             // 외화 → KRW (Sell)
-            fromAmount.multiply(exchangeRate)
+            fromAmount.multiply(rate)
             }
             else {
                 throw IllegalArgumentException("지원하지 않는 환전 방향입니다")
@@ -58,7 +62,6 @@ class ExchangeServiceImpl(
 
         // 환전 금액
         val toAmount = rawAmount.setScale(scale, RoundingMode.DOWN)
-
         // 차익
         val profit = rawAmount.subtract(toAmount)
 
