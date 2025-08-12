@@ -151,58 +151,59 @@ class WalletServiceImpl(
     }
 
     @Transactional
-    override fun companyToUser(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
-      // 회사 계좌 조회 및 잠금
-      val companyAccount = accountRepository.findByCurrencyIdAndUserTypeForUpdate(currencyId, UserType.SUPER)
-        ?: throw IllegalArgumentException("SUPER 계좌를 찾을 수 없습니다.")
+    override fun companyToUser(accountId: Long, userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
+        // 회사 계좌 조회 및 잠금
+        val companyAccount = accountRepository.findById(accountId)
+            .orElseThrow { IllegalArgumentException("회사의 계좌를 찾을 수 없습니다.") }
+        // 유저 지갑 조회 및 잠금
+        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+            ?: throw IllegalArgumentException("유저 지갑이 존재하지 않습니다.")
 
-      // 유저 지갑 조회 및 잠금
-      val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
-        ?: throw IllegalArgumentException("유저 지갑이 존재하지 않습니다.")
+        val move = amount.setScale(2, RoundingMode.DOWN)
 
-      val move = amount.setScale(2, RoundingMode.DOWN)
+        // 회사 계좌 잔액 검증 및 차감
+        if (companyAccount.balance >= move) {
+            "회사 계좌 잔액 부족"
+        }
+        companyAccount.balance = companyAccount.balance.minus(move)
 
-      // 회사 계좌 잔액 검증 및 차감
-      if (companyAccount.balance >= move) {"회사 계좌 잔액 부족"}
-      companyAccount.balance = companyAccount.balance.minus(move)
+        // 유저 지갑 가산
+        userWallet.balance = userWallet.balance.plus(move)
 
-      // 유저 지갑 가산
-      userWallet.balance = userWallet.balance.plus(move)
+        // 저장
+        accountRepository.save(companyAccount)
+        walletRepository.save(userWallet)
 
-      // 저장
-      accountRepository.save(companyAccount)
-      walletRepository.save(userWallet)
-
-      return userWallet.balance
+        return userWallet.balance
     }
 
     @Transactional
     override fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal): BigDecimal {
-      // 유저 지갑 조회 및 잠금
-      val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
-        ?: throw IllegalArgumentException("유저 지갑이 존재하지 않습니다.")
+        // 유저 지갑 조회 및 잠금
+        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+            ?: throw IllegalArgumentException("유저 지갑이 존재하지 않습니다.")
 
-      // 회사 목적 계좌 조회 및 잠금 + 통화 일치 체크
-      val companyAccount = accountRepository.findByIdForUpdate(accountId)
-        ?: throw IllegalArgumentException("회사의 계좌를 찾을 수 없습니다.")
+        // 회사 목적 계좌 조회 및 잠금 + 통화 일치 체크
+        val companyAccount = accountRepository.findByIdForUpdate(accountId)
+            ?: throw IllegalArgumentException("회사의 계좌를 찾을 수 없습니다.")
 
-      check(companyAccount.currencyId == currencyId) {
-        "회사의 계좌 통화와 요청한 통화가 일치하지 않습니다."
-      }
+        check(companyAccount.currencyId == currencyId) {
+            "회사의 계좌 통화와 요청한 통화가 일치하지 않습니다."
+        }
 
-      val move = amount.setScale(2, RoundingMode.DOWN)
+        val move = amount.setScale(2, RoundingMode.DOWN)
 
-      // 유저 지갑 잔액 검증 및 차감
-      check(userWallet.balance >= move) {"유저 지갑 잔액이 부족합니다." }
-      userWallet.balance = userWallet.balance.minus(move)
+        // 유저 지갑 잔액 검증 및 차감
+        check(userWallet.balance >= move) { "유저 지갑 잔액이 부족합니다." }
+        userWallet.balance = userWallet.balance.minus(move)
 
-      // 회사 계좌 가산
-      companyAccount.balance = companyAccount.balance.plus(move)
+        // 회사 계좌 가산
+        companyAccount.balance = companyAccount.balance.plus(move)
 
-      // 저장
-      walletRepository.save(userWallet)
-      accountRepository.save(companyAccount)
+        // 저장
+        walletRepository.save(userWallet)
+        accountRepository.save(companyAccount)
 
-      return userWallet.balance
+        return userWallet.balance
     }
-  }
+}
