@@ -1,6 +1,5 @@
 package org.example.backend.user.service
 
-import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 
 interface WalletService {
@@ -10,37 +9,50 @@ interface WalletService {
     fun depositFromAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal // 연결된 계좌에서 SUPER 계좌로 입금 -> 확인되면 지갑에 입금
     fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal // 지갑에서 연결된 계좌로 출금
 
-    /**
-     * FX 매수(KRW -> 외화) 정산:
-     * - 사용자 KRW 지갑에서 amount 차감
-     * - 회사 KRW 지갑에 commissionAmount 가산(수수료 수익)
-     * - 사용자 외화 지갑에 toAmount 가산
-     */
-    @Transactional
-    fun settleFxBuy(
-        orderId: Long,
-        userId: Long,
-        fromCurrencyId: Long, // KRW
-        toCurrencyId: Long,   // 외화
-        amount: BigDecimal,           // 사용자가 낸 총 KRW
-        commissionAmount: BigDecimal, // 수수료 KRW
-        toAmount: BigDecimal          // 사용자에게 지급할 외화
-    )
 
     /**
-     * FX 매도(외화 -> KRW) 정산:
-     * - 사용자 외화 지갑에서 amount 차감
-     * - 회사 KRW 지갑에 commissionAmount 가산(수수료 수익)
-     * - 사용자 KRW 지갑에 toAmount 가산
+     회사 계좌 -> 유저 지갑 depositFromAccount
+
+     buy
+    최종 환전된 금액 toAmount
+
+    sell
+    유저 최종 환전 금액 toAmount
+     **/
+    fun companyToUser(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal
+
+    /**
+     유저 지갑 -> 회사 계좌 withdrawToAccount
+
+    buy
+    수수료 commissionAmount
+    실제 환전할 원화 exchangeAmount
+
+    sell
+    환전할 달러 toAmount
+
+     **/
+    fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal): BigDecimal
+
+    // 회사 계좌 -> 회사 계좌
+    // sell 후 환전된 금액에서 수수료, 차익을 계산하여 회사 계좌로 입금
+    fun companyToCompany(fromAccountId: Long, toAccountId: Long, amount: BigDecimal): BigDecimal
+
+    /*
+    은행 -> 회사 계좌
+    // 회사 계좌 잔액 증가/ 감소
+    // userid, accountid, amount
+
+    buy
+     환전된 금액 toAmount 증가/감소
+
+     sell
+     환전할 달러 toAmount 증가/감소
+    환전된 금액 rawToAmount
      */
-    @Transactional
-    fun settleFxSell(
-        orderId: Long,
-        userId: Long,
-        fromCurrencyId: Long, // 외화
-        toCurrencyId: Long,   // KRW
-        amount: BigDecimal,           // 사용자가 판 외화
-        commissionAmount: BigDecimal, // 수수료 KRW(차감 방식이면 0 가능)
-        toAmount: BigDecimal          // 사용자에게 지급할 KRW
-    )
+
+    // 은행에서 환전한 금액을 회사 계좌로 입금
+    fun bankToCompany(accountId: Long, bankId: Long, amount: BigDecimal): BigDecimal
+
+
 }
