@@ -21,12 +21,6 @@ class RedisOrderQueue(
     // 큐에서 주문 요청을 가져오고 제거
     fun dequeue(): ExchangeOrderRequest? {
         val json = redisTemplate.opsForList().leftPop(QUEUE_KEY) ?: return null
-        return try {
-            mapper.readValue(json, ExchangeOrderRequest::class.java)
-        } catch (e: Exception) {
-            // 파싱 실패 시 해당 항목은 스킵하고 다음으로 진행
-            // logger.warn("Invalid order json. skip. json=$json", e)
-            null
-        }
+        return mapper.readValue(json, ExchangeOrderRequest::class.java)
     }
 }
