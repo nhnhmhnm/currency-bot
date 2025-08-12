@@ -14,9 +14,9 @@ class AccountServiceImpl(
 ) : AccountService{
   override fun createAccount(request: AccountCreateRequest) {
     // 중복 계좌 확인
-    if (accountRepository.findByUserIdAndCurrencyId(userId = request.userid, currencyId = request.currencyId) != null) {
-      throw UserException(ErrorCode.DUPLICATED_ACCOUNT)
-    }
+//    if (accountRepository.findByUserIdAndCurrencyId(userId = request.userid, currencyId = request.currencyId) != null) {
+//      throw UserException(ErrorCode.DUPLICATED_ACCOUNT)
+//    }
 
     // 객체 생성
     val account = Account(

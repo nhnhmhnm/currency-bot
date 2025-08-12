@@ -15,9 +15,9 @@ class WalletServiceImpl(
     private val walletRepository: WalletRepository,
     private val accountRepository: AccountRepository
 ) : WalletService {
-    private fun getForUpdate(userId: Long, currencyId: Long) =
-        walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
-            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
+//    private fun getForUpdate(userId: Long, currencyId: Long) =
+//        walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+//            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
     @Transactional
     override fun connectAccount(userId: Long, bankId: Long, accountNum: String) {
@@ -56,8 +56,10 @@ class WalletServiceImpl(
             ?: throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
 
         // SUPER 계정 찾기
-        val superAccount = accountRepository.findByCurrencyIdAndUser_Type(currencyId, UserType.SUPER)
+        val superAccount = accountRepository.findByBankIdAndAccountNum(2, "222222-22-222222")
             ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
+//        val superAccount = accountRepository.findByCurrencyIdAndUser_Type(currencyId, UserType.SUPER)
+//            ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
 
         // 금액 검증
         if (userAccount.balance < amount) {
@@ -159,8 +161,10 @@ class WalletServiceImpl(
             .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
 
         // 유저 지갑 조회 및 잠금
-        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+        val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
+//        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+//            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
         if (companyAccount.currencyId != currencyId) {
             throw UserException(ErrorCode.CURRENCY_MISMATCH)
@@ -187,12 +191,16 @@ class WalletServiceImpl(
     @Transactional
     override fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal): BigDecimal {
         // 유저 지갑 조회 및 잠금
-        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+        val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
+//        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
+//            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
         // 회사 목적 계좌 조회 및 잠금 + 통화 일치 체크
-        val companyAccount = accountRepository.findByIdForUpdate(accountId)
-            ?: throw UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND)
+        val companyAccount = accountRepository.findById(accountId)
+            .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
+//        val companyAccount = accountRepository.findByIdForUpdate(accountId)
+//            ?: throw UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND)
 
         if (companyAccount.currencyId != currencyId) {
             throw UserException(ErrorCode.CURRENCY_MISMATCH)

@@ -21,7 +21,7 @@ interface WalletRepository : JpaRepository<Wallet, Long> {
         @Param("currencyId") currencyId: Long
     ): BigDecimal
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select w from Wallet w where w.userId = :userId and w.currencyId = :currencyId")
-    fun findByUserIdAndCurrencyIdForUpdate(userId: Long, currencyId: Long): Wallet?
+//    @Lock(LockModeType.PESSIMISTIC_WRITE)
+//    @Query("select w from Wallet w where w.userId = :userId and w.currencyId = :currencyId")
+//    fun findByUserIdAndCurrencyIdForUpdate(userId: Long, currencyId: Long): Wallet?
 }

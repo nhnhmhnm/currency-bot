@@ -17,8 +17,11 @@ class OrderWorker(
 
     @Scheduled(fixedDelay = 500)
     fun processQueue() {
+        var pulled = 0
         var req = queue.dequeue()
+
         while (req != null) {
+            log.info("dequeued req: {}", req)  // 여기서 실제로 빠지는지 확인
             try {
                 when {
                     // 차익거래: KRW -> (toCurrency) -> KRW
@@ -59,8 +62,10 @@ class OrderWorker(
                 // 주문 처리 중 예외 발생 시 로깅하고 다음 요청으로 넘어감
                 log.error("order_processing_failed: ${mapper.writeValueAsString(req)}", e)
             }
+            pulled++
             req = queue.dequeue()
         }
+        if (pulled == 0) log.debug("queue empty")
     }
 
     private fun logOrder(type: String, res: ExchangeOrderResponse) {
