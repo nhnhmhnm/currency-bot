@@ -218,7 +218,7 @@ class ExchangeOrderServiceImpl(
                 fromAmount = fromAmount,
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
-                commissionCurrencyId = fromCurrency.id,
+                commissionCurrencyId = toCurrency.id,
                 commissionAmount = commissionAmount, // commission : 유저가 앱에서 환전을 할 때 발생하는 수수료 (회사가 받는 이익)
                 profitCurrencyId = null,
                 profit = null
@@ -252,7 +252,7 @@ class ExchangeOrderServiceImpl(
                 fromAmount = fromAmount,
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
-                commissionCurrencyId = fromCurrency.id,
+                commissionCurrencyId = toCurrency.id,
                 commissionRate = commission,
                 commissionAmount = commissionAmount,
                 type = ExchangeLedgerType.FX_SELL,
