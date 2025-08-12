@@ -11,20 +11,20 @@ import org.springframework.stereotype.Service
 class TransactionServiceImpl(
     private val transactionRepository: TransactionRepository
 ): TransactionService {
-    override fun record(dto: TransactionCommand): TransactionResponse {
+    override fun record(transaction: TransactionCommand): TransactionResponse {
         val entity = Transaction(
-            userId = dto.userId,
-            walletId = dto.walletId,
-            orderId = dto.orderId,
-            fromCurrencyId = dto.fromCurrencyId,
-            toCurrencyId = dto.toCurrencyId,
-            fromAmount = dto.fromAmount,
-            toAmount = dto.toAmount,
-            exchangeRate = dto.exchangeRate,
-            commissionCurrencyId = dto.commissionCurrencyId,
-            commissionAmount = dto.commissionAmount,
-            profitCurrencyId = dto.profitCurrencyId,
-            profit = dto.profit
+            userId = transaction.userId,
+//            walletId = transaction.walletId,
+            orderId = transaction.orderId,
+            fromCurrencyId = transaction.fromCurrencyId,
+            toCurrencyId = transaction.toCurrencyId,
+            fromAmount = transaction.fromAmount,
+            toAmount = transaction.toAmount,
+            exchangeRate = transaction.exchangeRate,
+            commissionCurrencyId = transaction.commissionCurrencyId,
+            commissionAmount = transaction.commissionAmount,
+            profitCurrencyId = transaction.profitCurrencyId,
+            profit = transaction.profit
         )
         val saved = transactionRepository.save(entity)
 

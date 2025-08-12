@@ -5,6 +5,6 @@ enum class WalletTransactionStatusType(
   val value: String
 ) {
   PENDING("PENDING", "처리중"),
-  COMPLETED("COMPLETED", "입출금 완료"),
+  SUCCESS("SUCCESS", "입출금 완료"),
   FAILED("FAILED", "입출금 실패")
 }

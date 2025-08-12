@@ -53,8 +53,8 @@ class ExchangeOrderServiceImpl(
         val orderId: Long = savedOrder.id ?: error("Order ID is null")
 
         return try {
-            val commissionAmount = amount.multiply(commission) // 환전 수수료
-            val exchangeAmount = amount.subtract(commissionAmount) // 실제 환전할 금액
+            val commissionAmount = if(isArbitrage) BigDecimal.ZERO else amount.times(commission) // 환전 수수료
+            val exchangeAmount = amount.minus(commissionAmount) // 실제 환전할 금액
 
             val (toAmount, bankProfit) = exchangeService.calculateExchange(
                 fromCurrency = fromCurrency,
@@ -172,11 +172,11 @@ class ExchangeOrderServiceImpl(
 
             // 수수료 계산
 //            val commissionAmount = if (isArbitrage) BigDecimal.ZERO else rawToAmount.multiply(commission)
-            val commissionAmount = rawToAmount.multiply(commission)  // 환전 수수료
-            val tmpToAmount = rawToAmount.subtract(commissionAmount)
+            val commissionAmount = rawToAmount.times(commission)  // 환전 수수료
+            val tmpToAmount = rawToAmount.minus(commissionAmount) // 환전된 금액 - 수수료
 
-            val toAmount = tmpToAmount.setScale(toCurrency.scale, RoundingMode.DOWN)
-            val profit = tmpToAmount.subtract(toAmount)
+            val toAmount = tmpToAmount.setScale(toCurrency.scale, RoundingMode.DOWN) // 유저가 실제 받는 금액
+            val profit = tmpToAmount.minus(toAmount) // 회사 차익
 
             val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, fromCurrency.id)
             val companyWallet = walletRepository.findByUserIdAndCurrencyId(1L, toCurrency.id)
@@ -267,12 +267,5 @@ class ExchangeOrderServiceImpl(
         val sell = sellOrder(userId, currencyCode, buy.toAmount, true)
 
         return Pair(buy, sell)
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    fun markCanceled(orderId: Long) {
-        val order = exchangeOrderRepository.findById(orderId)
-            .orElseThrow { IllegalArgumentException("order not found: $orderId") }
-        order.status = OrderStatus.FAILED
     }
 }

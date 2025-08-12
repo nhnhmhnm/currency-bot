@@ -2,10 +2,10 @@ package org.example.backend.exchange.service
 
 import org.example.backend.exchange.dto.ExchangeDTO
 import org.example.backend.finance.domain.Currency
-import org.example.backend.finance.repository.CurrencyRepository
 import java.math.BigDecimal
 
 interface ExchangeService {
+    // 송금 기준
     fun getBestBuyRate(currencyCode: String): ExchangeDTO
     fun getBestSellRate(currencyCode: String): ExchangeDTO
 
@@ -13,5 +13,6 @@ interface ExchangeService {
     fun getBestBuyBaseRate(currencyCode: String): ExchangeDTO
     fun getBestSellBaseRate(currencyCode: String): ExchangeDTO
 
+    // 환전 계산
     fun calculateExchange(fromCurrency: Currency, toCurrency: Currency, exchangeRate: BigDecimal, fromAmount: BigDecimal): Pair<BigDecimal, BigDecimal>
 }

@@ -11,7 +11,6 @@ import org.springframework.stereotype.Repository
 class ExchangeRateRateJdbcRepositoryImpl(
     private val jdbcTemplate: NamedParameterJdbcTemplate
 ) : ExchangeRateJdbcRepository {
-
     override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
         val sql = """
             SELECT bank_id, currency_id, buy_rate AS best_rate FROM exchange_rate er
@@ -60,7 +59,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.SELL)
         }.firstOrNull()
     }
 
@@ -110,7 +109,7 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.SELL)
         }.firstOrNull()
     }
 }

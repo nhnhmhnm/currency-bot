@@ -22,7 +22,7 @@ class OrderWorker(
                 }
             } catch (e: Exception) {
                 // 주문 처리 중 예외 발생 시 로깅하고 다음 요청으로 넘어감
-                // logger.error("Unexpected error while processing order request: $req", e)
+//                 logger.error("Unexpected error while processing order request: $req", e)
             }
             req = queue.dequeue()
         }

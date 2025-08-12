@@ -11,18 +11,18 @@ import org.springframework.stereotype.Service
 class ExchangeLedgerServiceImpl(
     private val exchangeLedgerRepository: ExchangeLedgerRepository,
 ): ExchangeLedgerService {
-    override fun record(ledgerDto: ExchangeLedgerCommand): ExchangeLedgerResponse {
+    override fun record(ledger: ExchangeLedgerCommand): ExchangeLedgerResponse {
         val entity = ExchangeLedger(
-            userId = ledgerDto.userId,
-            fromCurrencyId = ledgerDto.fromCurrencyId,
-            toCurrencyId = ledgerDto.toCurrencyId,
-            fromAmount = ledgerDto.fromAmount,
-            toAmount = ledgerDto.toAmount,
-            exchangeRate = ledgerDto.exchangeRate,
-            commissionCurrencyId = ledgerDto.commissionCurrencyId,
-            commissionRate = ledgerDto.commissionRate,
-            commissionAmount = ledgerDto.commissionAmount,
-            type = ledgerDto.type,
+            userId = ledger.userId,
+            fromCurrencyId = ledger.fromCurrencyId,
+            toCurrencyId = ledger.toCurrencyId,
+            fromAmount = ledger.fromAmount,
+            toAmount = ledger.toAmount,
+            exchangeRate = ledger.exchangeRate,
+            commissionCurrencyId = ledger.commissionCurrencyId,
+            commissionRate = ledger.commissionRate,
+            commissionAmount = ledger.commissionAmount,
+            type = ledger.type,
         )
         val saved = exchangeLedgerRepository.save(entity)
 

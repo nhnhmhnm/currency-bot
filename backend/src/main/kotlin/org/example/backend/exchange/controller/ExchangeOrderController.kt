@@ -9,7 +9,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
 import java.math.BigDecimal
 
-
 @RestController
 @RequestMapping("/api/exchange")
 class ExchangeOrderController(
@@ -17,13 +16,10 @@ class ExchangeOrderController(
 ) {
     // 1. 매수 주문
     @PostMapping("/buy")
-    fun buyOrder(
-        @AuthenticationPrincipal user: UserPrincipal,
+    fun buyOrder(@AuthenticationPrincipal user: UserPrincipal,
         @RequestParam currencyCode: String,
-        @RequestParam amount: BigDecimal
-    ): ResponseEntity<String> {
+        @RequestParam amount: BigDecimal): ResponseEntity<String> {
         // 주문 요청을 큐에 적재
-
         val req = ExchangeOrderRequest(user.id, OrderType.BUY, currencyCode, amount)
 
         redisOrderQueue.enqueue(req)
@@ -36,7 +32,7 @@ class ExchangeOrderController(
     fun sellOrder(@AuthenticationPrincipal user: UserPrincipal,
                   @RequestParam currencyCode: String,
                   @RequestParam amount: BigDecimal): ResponseEntity<String> {
-
+        // 주문 요청을 큐에 적재
         val req = ExchangeOrderRequest(user.id, OrderType.SELL, currencyCode, amount)
         redisOrderQueue.enqueue(req)
 
@@ -48,7 +44,7 @@ class ExchangeOrderController(
     fun arbitrageOrder(@AuthenticationPrincipal user: UserPrincipal,
                        @RequestParam currencyCode: String,
                        @RequestParam amount: BigDecimal): ResponseEntity<String> {
-
+        // 주문 요청을 큐에 적재
         val req = ExchangeOrderRequest(user.id, OrderType.ARBITRAGE, currencyCode, amount)
         redisOrderQueue.enqueue(req)
 
