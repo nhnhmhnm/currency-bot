@@ -15,7 +15,7 @@ data class TransactionCommand(
     val exchangeRate: BigDecimal,
 
     val commissionCurrencyId: Long?,
-    val commissionAmount: BigDecimal? = null,
+    val commissionAmount: BigDecimal?,
     val profitCurrencyId: Long?,
-    val profit: BigDecimal? = null
+    val profit: BigDecimal?
 )

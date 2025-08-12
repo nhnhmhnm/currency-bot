@@ -7,14 +7,17 @@ import java.time.LocalDateTime
 data class ExchangeLedgerResponse(
     val id: Long,
     val userId: Long,
+
     val fromCurrencyId: Long,
     val toCurrencyId: Long,
     val fromAmount: BigDecimal,
     val toAmount: BigDecimal,
     val exchangeRate: BigDecimal,
-    val commissionCurrencyId: Long,
-    val commissionRate: BigDecimal,
-    val commissionAmount: BigDecimal,
+
+    val commissionCurrencyId: Long?,
+    val commissionRate: BigDecimal?,
+    val commissionAmount: BigDecimal?,
+
     val type: ExchangeLedgerType,
     val createdAt: LocalDateTime
 )
