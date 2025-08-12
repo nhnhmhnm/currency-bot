@@ -83,7 +83,7 @@ class OrderWorker(
                 "toAmount" to res.toAmount,
                 "exchangeRate" to res.exchangeRate,
                 "status" to res.status.name,
-                "requestedAt" to res.requestedAt
+                "requestedAt" to res.requestedAt.toString()
             )
         )
         log.info(mapper.writeValueAsString(payload))

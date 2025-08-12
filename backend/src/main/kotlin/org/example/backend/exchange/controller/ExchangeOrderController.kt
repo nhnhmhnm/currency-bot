@@ -16,17 +16,16 @@ class ExchangeOrderController(
     // 1. 매수 주문
     @PostMapping("/buy")
     fun buyOrder(@AuthenticationPrincipal user: UserPrincipal,
-                 @RequestParam currencyCode: String,
+                 @RequestParam toCurrencyCode: String,
                  @RequestParam fromAmount: BigDecimal): ResponseEntity<String> {
         // 주문 요청을 큐에 적재
         val q = ExchangeOrderRequest(
             userId = user.id,
             fromCurrency = "KRW",
-            toCurrency = currencyCode.uppercase(),
+            toCurrency = toCurrencyCode.uppercase(),
             fromAmount = fromAmount,
             isArbitrage = false
         )
-
         redisOrderQueue.enqueue(q)
 
         return ResponseEntity.ok("매수 주문이 접수되었습니다. (실제 처리는 순차적으로 진행됩니다)")
@@ -35,12 +34,12 @@ class ExchangeOrderController(
     // 2. 매도 주문
     @PostMapping("/sell")
     fun sellOrder(@AuthenticationPrincipal user: UserPrincipal,
-                  @RequestParam currencyCode: String,
+                  @RequestParam fromCurrencyCode: String,
                   @RequestParam fromAmount: BigDecimal): ResponseEntity<String> {
         // 주문 요청을 큐에 적재
         val q = ExchangeOrderRequest(
             userId = user.id,
-            fromCurrency = currencyCode.uppercase(),
+            fromCurrency = fromCurrencyCode.uppercase(),
             toCurrency = "KRW",
             fromAmount = fromAmount,
             isArbitrage = false
