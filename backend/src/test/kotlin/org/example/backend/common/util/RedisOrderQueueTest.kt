@@ -17,9 +17,10 @@ class RedisOrderQueueTest : BehaviorSpec({
     Given("사용자가 매수 주문 요청을 보냈을 때") {
         val request = ExchangeOrderRequest(
             userId = 1L,
-            type = OrderType.BUY,
-            currencyCode = "USD",
-            amount = BigDecimal("100.00")
+            fromCurrency = "KRW",
+            toCurrency = "USD",
+            fromAmount = BigDecimal("100000"),
+            isArbitrage = false
         )
 
         When("enqueue 메서드를 호출하면") {
@@ -35,9 +36,10 @@ class RedisOrderQueueTest : BehaviorSpec({
     Given("큐에 저장된 매수 주문이 있을 때") {
         val request = ExchangeOrderRequest(
             userId = 1L,
-            type = OrderType.BUY,
-            currencyCode = "USD",
-            amount = BigDecimal("100.00")
+            fromCurrency = "KRW",
+            toCurrency = "USD",
+            fromAmount = BigDecimal("100000"),
+            isArbitrage = false
         )
 
         When("dequeue 메서드를 호출하면") {
