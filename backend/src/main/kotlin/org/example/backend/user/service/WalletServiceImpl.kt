@@ -207,8 +207,11 @@ class WalletServiceImpl(
         }
 
         // 유저 지갑 잔액 검증 및 차감
-        if (userWallet.balance < amount) {
-            throw UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
+//        if (userWallet.balance < amount) {
+//            throw UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
+//        }
+        require(userWallet.balance >= amount) {
+            UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
         }
 
         // 유저 지갑에서 회사 계좌로 송금
