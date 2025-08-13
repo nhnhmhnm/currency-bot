@@ -34,7 +34,7 @@ class ExchangeLedger(
     @Column(name = "commission_currency_id", nullable = true)
     val commissionCurrencyId: Long?,
 
-    @Column(name = "commission_rate", nullable = true)
+    @Column(name = "commission_rate", nullable = true, precision = 18, scale = 10)
     val commissionRate: BigDecimal?,
 
     @Column(name = "commission_amount", nullable = true)

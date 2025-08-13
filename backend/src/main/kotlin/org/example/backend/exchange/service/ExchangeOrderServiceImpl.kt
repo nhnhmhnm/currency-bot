@@ -136,7 +136,6 @@ class ExchangeOrderServiceImpl(
                 profitCurrencyId = null,
                 profit = null
             )
-
             transactionService.record(userToCompany)
 
             val companyToBank = TransactionCommand(

@@ -47,7 +47,7 @@ class Transaction(
     @Column(name = "profit_currency_id", nullable = true)
     val profitCurrencyId: Long? = null,
 
-    @Column(name = "profit", nullable = true)
+    @Column(name = "profit", nullable = true, precision = 18, scale = 10)
     val profit: BigDecimal? = null,
 
     @CreationTimestamp
