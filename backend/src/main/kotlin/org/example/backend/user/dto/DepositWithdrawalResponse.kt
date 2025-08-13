@@ -1,0 +1,15 @@
+package org.example.backend.user.dto
+
+import org.example.backend.enums.WalletTransactionType
+import java.math.BigDecimal
+import java.time.LocalDateTime
+
+data class DepositWithdrawalResponse(
+  val id: Long,
+  val userId: Long,
+  val walletId: Long,
+  val currencyId: Long,
+  val amount: BigDecimal,
+  val type: WalletTransactionType,
+  val executedAt: LocalDateTime? = null
+)

@@ -5,6 +5,8 @@ import org.example.backend.exchange.domain.ExchangeLedger
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.domain.Transaction
 import org.example.backend.exchange.dto.*
+import org.example.backend.user.domain.DepositWithdrawal
+import org.example.backend.user.dto.DepositWithdrawalResponse
 import java.sql.ResultSet
 
 fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
@@ -59,4 +61,14 @@ fun Transaction.toDTO() = TransactionResponse(
     profitCurrencyId = this.profitCurrencyId,
     profit = this.profit,
     createdAt = this.createdAt!!
+)
+
+fun DepositWithdrawal.toDTO() = DepositWithdrawalResponse(
+    id = requireNotNull(this.id) {"DepositWithdrawal.id is null after save"},
+    userId = this.userId,
+    walletId = this.walletId,
+    currencyId = this.currencyId,
+    amount = this.amount,
+    type = this.type,
+    executedAt = this.executedAt
 )

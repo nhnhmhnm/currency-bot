@@ -1,8 +1,10 @@
 package org.example.backend.user.service
 
 import org.example.backend.enums.UserType
+import org.example.backend.enums.WalletTransactionType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
+import org.example.backend.user.dto.DepositWithdrawalCommand
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
@@ -13,7 +15,8 @@ import java.math.RoundingMode
 @Service
 class WalletServiceImpl(
     private val walletRepository: WalletRepository,
-    private val accountRepository: AccountRepository
+    private val accountRepository: AccountRepository,
+    private val depositWithdralService: DepositWithdrawalService
 ) : WalletService {
 //    private fun getForUpdate(userId: Long, currencyId: Long) =
 //        walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
@@ -56,7 +59,7 @@ class WalletServiceImpl(
             ?: throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
 
         // SUPER 계정 찾기
-        val superAccount = accountRepository.findByBankIdAndAccountNum(2, "222222-22-222222")
+        val superAccount = accountRepository.findByBankIdAndAccountNum(1, "222222-22-222222")
             ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
 //        val superAccount = accountRepository.findByCurrencyIdAndUser_Type(currencyId, UserType.SUPER)
 //            ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
@@ -77,6 +80,16 @@ class WalletServiceImpl(
         accountRepository.save(userAccount)
         accountRepository.save(superAccount)
         walletRepository.save(wallet)
+
+        val deposit = DepositWithdrawalCommand(
+            userId = userId,
+            walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
+            currencyId = currencyId,
+            amount = amount,
+            type = WalletTransactionType.DEPOSIT
+        )
+
+        depositWithdralService.record(deposit)
 
         return wallet.balance
     }
@@ -102,6 +115,16 @@ class WalletServiceImpl(
 
         walletRepository.save(wallet)
         accountRepository.save(userAccount)
+
+        val withdrwal = DepositWithdrawalCommand(
+            userId = userId,
+            walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
+            currencyId = currencyId,
+            amount = amount,
+            type = WalletTransactionType.WITHDRAWAL
+        )
+
+        depositWithdralService.record(withdrwal)
 
         return wallet.balance
     }

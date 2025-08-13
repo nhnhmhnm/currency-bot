@@ -30,6 +30,6 @@ class WalletFxHistory(
     @Column(nullable = false)
     val type: WalletFxHistoryType,
 
-    @Column(name = "created_at")
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    @Column(name = "executed_at")
+    val executedAt: LocalDateTime = LocalDateTime.now()
 )
