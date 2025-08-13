@@ -1,10 +1,12 @@
 package org.example.backend.user.service
 
 import org.example.backend.enums.UserType
+import org.example.backend.enums.WalletFxHistoryType
 import org.example.backend.enums.WalletTransactionType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.user.dto.DepositWithdrawalCommand
+import org.example.backend.user.dto.WalletFxCommand
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
@@ -16,7 +18,8 @@ import java.math.RoundingMode
 class WalletServiceImpl(
     private val walletRepository: WalletRepository,
     private val accountRepository: AccountRepository,
-    private val depositWithdralService: DepositWithdrawalService
+    private val depositWithdrawalService: DepositWithdrawalService,
+    private val walletFxHistoryService: WalletFxHistoryService
 ) : WalletService {
 //    private fun getForUpdate(userId: Long, currencyId: Long) =
 //        walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
@@ -89,7 +92,7 @@ class WalletServiceImpl(
             type = WalletTransactionType.DEPOSIT
         )
 
-        depositWithdralService.record(deposit)
+        depositWithdrawalService.record(deposit)
 
         return wallet.balance
     }
@@ -116,7 +119,7 @@ class WalletServiceImpl(
         walletRepository.save(wallet)
         accountRepository.save(userAccount)
 
-        val withdrwal = DepositWithdrawalCommand(
+        val withdrawal = DepositWithdrawalCommand(
             userId = userId,
             walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
             currencyId = currencyId,
@@ -124,7 +127,7 @@ class WalletServiceImpl(
             type = WalletTransactionType.WITHDRAWAL
         )
 
-        depositWithdralService.record(withdrwal)
+        depositWithdrawalService.record(withdrawal)
 
         return wallet.balance
     }
@@ -178,7 +181,7 @@ class WalletServiceImpl(
     }
 
     @Transactional
-    override fun companyToUser(accountId: Long, userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
+    override fun companyToUser(accountId: Long, userId: Long, currencyId: Long, amount: BigDecimal, orderId: Long?): BigDecimal {
         // 회사 계좌 조회 및 잠금
         val companyAccount = accountRepository.findById(accountId)
             .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
@@ -208,11 +211,23 @@ class WalletServiceImpl(
         accountRepository.save(companyAccount)
         walletRepository.save(userWallet)
 
+        val fxBuy = WalletFxCommand(
+            userId = userId,
+            walletId = userWallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
+            orderId = orderId, // 주문 ID는 필요에 따라 설정
+            currencyId = currencyId,
+            amount = amount,
+            balanceAfter = userWallet.balance,
+            type = WalletFxHistoryType.COMPANY_TO_USER
+        )
+
+        walletFxHistoryService.record(fxBuy)
+
         return userWallet.balance
     }
 
     @Transactional
-    override fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal): BigDecimal {
+    override fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal, orderId: Long?): BigDecimal {
         // 유저 지갑 조회 및 잠금
         val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
@@ -246,6 +261,18 @@ class WalletServiceImpl(
         // 저장
         walletRepository.save(userWallet)
         accountRepository.save(companyAccount)
+
+        val fxSell = WalletFxCommand(
+            userId = userId,
+            walletId = userWallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
+            orderId = orderId,
+            currencyId = currencyId,
+            amount = amount,
+            balanceAfter = userWallet.balance,
+            type = WalletFxHistoryType.USER_TO_COMPANY
+        )
+
+        walletFxHistoryService.record(fxSell)
 
         return userWallet.balance
     }

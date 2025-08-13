@@ -2,6 +2,7 @@ package org.example.backend.user.domain
 
 import jakarta.persistence.*
 import org.example.backend.enums.WalletFxHistoryType
+import org.example.backend.finance.domain.Currency
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -31,5 +32,18 @@ class WalletFxHistory(
     val type: WalletFxHistoryType,
 
     @Column(name = "executed_at")
-    val executedAt: LocalDateTime = LocalDateTime.now()
+    val executedAt: LocalDateTime = LocalDateTime.now(),
+
+    // 선택적(읽기 전용) 연관: 필요하면 유지
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", insertable = false, updatable = false)
+    val user: User? = null,
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "wallet_id", insertable = false, updatable = false)
+    val wallet: Wallet? = null,
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "currency_id", insertable = false, updatable = false)
+    val currency: Currency? = null
 )
