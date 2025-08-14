@@ -10,10 +10,10 @@ interface WalletService {
     fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal // 지갑에서 연결된 계좌로 출금
 
     // 회사 계좌 -> 유저 지갑
-    fun companyToUser(accountId: Long, userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal
+    fun companyToUser(accountId: Long, userId: Long, currencyId: Long, amount: BigDecimal, orderId: Long? = null): BigDecimal
 
     // 유저 지갑 -> 회사 계좌
-    fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal): BigDecimal
+    fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal, orderId: Long? = null): BigDecimal
 
     // 회사 계좌 -> 회사 계좌
     // sell 후 환전된 금액에서 수수료를 계산하여 회사 수수료 계좌로 입금

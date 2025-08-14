@@ -4,12 +4,16 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
+import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.JoinColumn
+import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import org.example.backend.enums.WalletTransactionStatusType
 import org.example.backend.enums.WalletTransactionType
+import org.example.backend.finance.domain.Currency
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -36,16 +40,19 @@ class DepositWithdrawal(
   @Column(name = "type", nullable = false)
   val type: WalletTransactionType,
 
-  @Enumerated(EnumType.STRING)
-  @Column(name = "status", nullable = false)
-  var status: WalletTransactionStatusType = WalletTransactionStatusType.PENDING,
+  @Column(name = "executed_at", updatable = false)
+  var executedAt: LocalDateTime = LocalDateTime.now(),
 
-  @Column(name = "status_desc", columnDefinition = "TEXT")
-  var statusDesc: String? = null,
+  // 선택적(읽기 전용) 연관: 필요하면 유지
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "user_id", insertable = false, updatable = false)
+  val user: User? = null,
 
-  @Column(name = "requested_at", nullable = false)
-  val requestedAt: LocalDateTime = LocalDateTime.now(),
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "wallet_id", insertable = false, updatable = false)
+  val wallet: Wallet? = null,
 
-  @Column(name = "executed_at")
-  var executedAt: LocalDateTime? = null
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "currency_id", insertable = false, updatable = false)
+  val currency: Currency? = null
 )
