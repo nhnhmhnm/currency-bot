@@ -92,11 +92,11 @@ class ExchangeOrderServiceImpl(
 
             // 유저 원화 지갑 fromAmount -> 회사 원화 계좌 exchangeAmount, 회사 수수료 계좌 commissionAmount
             stage = "FUND_USER_TO_COMPANY_KRW"
-            walletService.userToCompany(userId, fromCurrency.id, companyKRWAccount.id!!, exchangeAmount)
+            walletService.userToCompany(userId, fromCurrency.id, companyKRWAccount.id!!, exchangeAmount, orderId)
             log.info("order[{}] step={}", orderId, stage)
 
             stage = "FUND_USER_TO_COMPANY_COMMISSION"
-            walletService.userToCompany(userId, fromCurrency.id, companyCommissionAccount.id!!, commissionAmount)
+            walletService.userToCompany(userId, fromCurrency.id, companyCommissionAccount.id!!, commissionAmount, orderId)
             log.info("order[{}] step={}", orderId, stage)
 
             // 회사 원화 계좌 exchangeAmount -> 은행
@@ -111,7 +111,7 @@ class ExchangeOrderServiceImpl(
 
             // 회사 외화 계좌 -> 유저 외화 지갑 toAmount
             stage = "FUND_COMPANY_TO_USER_FX"
-            walletService.companyToUser(companyFXAccount.id!!, userId, toCurrency.id, toAmount)
+            walletService.companyToUser(companyFXAccount.id!!, userId, toCurrency.id, toAmount, orderId)
             log.info("order[{}] step={}", orderId, stage)
 
             // 4. 더티 체킹으로 주문 SUCCESS 업데이트
@@ -246,7 +246,7 @@ class ExchangeOrderServiceImpl(
 
             // 유저 외화 지갑 -> 회사 외화 계좌 fromAmount
             stage = "FUND_USER_TO_COMPANY_KRW"
-            walletService.userToCompany(userId, fromCurrency.id, companyFXAccount.id!!, fromAmount)
+            walletService.userToCompany(userId, fromCurrency.id, companyFXAccount.id!!, fromAmount, orderId)
             log.info("order[{}] step={}", orderId, stage)
 
             // 회사 외화 계좌 -> 은행 fromAmount
@@ -265,7 +265,7 @@ class ExchangeOrderServiceImpl(
             log.info("order[{}] step={}", orderId, stage)
 
             stage = "FUND_COMPANY_TO_USER_KRW"
-            walletService.companyToUser(companyKRWAccount.id!!, userId, toCurrency.id, toAmount)
+            walletService.companyToUser(companyKRWAccount.id!!, userId, toCurrency.id, toAmount, orderId)
             log.info("order[{}] step={}", orderId, stage)
 
             // 4. 더티 체킹으로 주문 SUCCESS 업데이트
