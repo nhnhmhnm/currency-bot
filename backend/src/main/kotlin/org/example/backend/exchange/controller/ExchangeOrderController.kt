@@ -3,6 +3,8 @@ package org.example.backend.exchange.controller
 import org.example.backend.auth.dto.UserPrincipal
 import org.example.backend.common.util.RedisOrderQueue
 import org.example.backend.exchange.dto.ExchangeOrderRequest
+import org.springframework.http.HttpStatus
+import org.springframework.http.HttpStatusCode
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
@@ -28,7 +30,9 @@ class ExchangeOrderController(
         )
         redisOrderQueue.enqueue(q)
 
-        return ResponseEntity.ok("매수 주문이 접수되었습니다. (실제 처리는 순차적으로 진행됩니다)")
+        return ResponseEntity
+            .status(HttpStatus.ACCEPTED)
+            .body("${toCurrencyCode.uppercase()} 구매 주문이 접수되었습니다.")
     }
 
     // 2. 매도 주문
@@ -46,7 +50,9 @@ class ExchangeOrderController(
         )
         redisOrderQueue.enqueue(q)
 
-        return ResponseEntity.ok("매도 주문이 접수되었습니다. (실제 처리는 순차적으로 진행됩니다)")
+        return ResponseEntity
+            .status(HttpStatus.ACCEPTED)
+            .body("${fromCurrencyCode.uppercase()} 판매 주문이 접수되었습니다.")
     }
 
     // 3. 차익거래 주문
@@ -64,6 +70,8 @@ class ExchangeOrderController(
         )
         redisOrderQueue.enqueue(q)
 
-        return ResponseEntity.ok("차익거래 주문이 접수되었습니다. (실제 처리는 순차적으로 진행됩니다)")
+        return ResponseEntity
+            .status(HttpStatus.ACCEPTED)
+            .body("${currencyCode.uppercase()} 차익거래 주문이 접수되었습니다.")
     }
 }

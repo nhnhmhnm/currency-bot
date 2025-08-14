@@ -11,7 +11,7 @@ enum class CompanyAccount(
     JPY_ACCOUNT(7, 3, "777777-77-777777");
 
     companion object {
-        private val byCurrencyId = entries.associateBy { it.currencyId }  // ← values() 대신 entries
+        private val byCurrencyId = entries.associateBy { it.currencyId }
         fun ofCurrencyId(id: Long) =
             byCurrencyId[id] ?: error("회사 계좌 없음: currencyId=$id")
     }

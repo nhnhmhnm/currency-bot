@@ -15,7 +15,6 @@ import org.example.backend.user.service.WalletService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.transaction.interceptor.TransactionAspectSupport
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -182,8 +181,6 @@ class ExchangeOrderServiceImpl(
 
             savedOrder.status = OrderStatus.FAILED
 
-            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly()
-
             savedOrder.toDTO()
         }
     }
@@ -336,8 +333,6 @@ class ExchangeOrderServiceImpl(
 
             // 주문 실패 시, 주문 상태를 FAILED로 변경
             savedOrder.status = OrderStatus.FAILED
-
-            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly()
 
             savedOrder.toDTO()
         }
