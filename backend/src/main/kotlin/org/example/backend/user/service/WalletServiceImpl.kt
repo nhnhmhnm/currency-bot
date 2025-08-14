@@ -1,5 +1,6 @@
 package org.example.backend.user.service
 
+import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.UserType
 import org.example.backend.enums.WalletFxHistoryType
 import org.example.backend.enums.WalletTransactionType
@@ -62,7 +63,7 @@ class WalletServiceImpl(
             ?: throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
 
         // SUPER 계정 찾기
-        val superAccount = accountRepository.findByBankIdAndAccountNum(1, "222222-22-222222")
+        val superAccount = accountRepository.findByBankIdAndAccountNum(CompanyAccount.KRW_ACCOUNT.bankId, CompanyAccount.KRW_ACCOUNT.accountNum)
             ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
 //        val superAccount = accountRepository.findByCurrencyIdAndUser_Type(currencyId, UserType.SUPER)
 //            ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
