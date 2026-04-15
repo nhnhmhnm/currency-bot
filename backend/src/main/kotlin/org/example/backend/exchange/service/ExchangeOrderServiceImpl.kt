@@ -30,7 +30,7 @@ class ExchangeOrderServiceImpl(
 ): ExchangeOrderService {
     private val log = LoggerFactory.getLogger(ExchangeOrderServiceImpl::class.java)
 
-    val commission = BigDecimal("0.0005") // 0.05% 수수료
+    val commission = BigDecimal("0.00003") // 0.05% 수수료
 
     @Transactional
     override fun buyOrder(userId: Long, currencyCode: String, fromAmount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse {
@@ -84,7 +84,7 @@ class ExchangeOrderServiceImpl(
             val fxMeta        = CompanyAccount.ofCurrencyId(toCurrency.id)
 
             val companyCommissionAccount = accountRepository.findByCurrencyIdAndAccountNum(1, commissionMeta.accountNum)
-                ?: error("Company account not found")
+
             val companyKRWAccount = accountRepository.findByCurrencyIdAndAccountNum(fromCurrency.id, krwMeta.accountNum)
                 ?: error("Company KRW account not found")
             val companyFXAccount = accountRepository.findByCurrencyIdAndAccountNum(toCurrency.id, fxMeta.accountNum)
@@ -96,7 +96,9 @@ class ExchangeOrderServiceImpl(
             log.info("order[{}] step={}", orderId, stage)
 
             stage = "FUND_USER_TO_COMPANY_COMMISSION"
-            walletService.userToCompany(userId, fromCurrency.id, companyCommissionAccount.id!!, commissionAmount, orderId)
+            if (companyCommissionAccount != null) {
+                walletService.userToCompany(userId, fromCurrency.id, companyCommissionAccount.id!!, commissionAmount, orderId)
+            }
             log.info("order[{}] step={}", orderId, stage)
 
             // 회사 원화 계좌 exchangeAmount -> 은행
