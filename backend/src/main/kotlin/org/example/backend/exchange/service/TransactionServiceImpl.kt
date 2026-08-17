@@ -1,6 +1,6 @@
 package org.example.backend.exchange.service
 
-import org.example.backend.common.util.toDTO
+import org.example.backend.common.util.toDto
 import org.example.backend.exchange.domain.Transaction
 import org.example.backend.exchange.dto.TransactionCommand
 import org.example.backend.exchange.dto.TransactionResponse
@@ -28,6 +28,6 @@ class TransactionServiceImpl(
         )
         val saved = transactionRepository.save(entity)
 
-        return saved.toDTO()
+        return saved.toDto()
     }
 }

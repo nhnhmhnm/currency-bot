@@ -1,6 +1,6 @@
 package org.example.backend.exchange.service
 
-import org.example.backend.common.util.toDTO
+import org.example.backend.common.util.toDto
 import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.ExchangeLedgerType
 import org.example.backend.enums.OrderStatus
@@ -176,14 +176,14 @@ class ExchangeOrderServiceImpl(
 
             ledgerService.record(ledgerDto)
 
-            return savedOrder.toDTO()
+            return savedOrder.toDto()
         } catch (e: Exception) {
             // 주문 실패 시, 주문 상태를 FAILED로 변경
             log.error("buyOrder[{}] FAILED at stage={} : {}", orderId, stage, e.message, e)
 
             savedOrder.status = OrderStatus.FAILED
 
-            savedOrder.toDTO()
+            savedOrder.toDto()
         }
     }
 
@@ -329,14 +329,14 @@ class ExchangeOrderServiceImpl(
             )
             ledgerService.record(ledgerDto)
 
-            return savedOrder.toDTO()
+            return savedOrder.toDto()
         } catch (e: Exception) {
             log.error("sellOrder[{}] FAILED at stage={} : {}", orderId, stage, e.message, e)
 
             // 주문 실패 시, 주문 상태를 FAILED로 변경
             savedOrder.status = OrderStatus.FAILED
 
-            savedOrder.toDTO()
+            savedOrder.toDto()
         }
     }
 

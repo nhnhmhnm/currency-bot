@@ -7,7 +7,7 @@ import io.mockk.*
 import org.example.backend.enums.ExchangeType
 import org.example.backend.enums.OrderStatus
 import org.example.backend.exchange.domain.ExchangeOrder
-import org.example.backend.exchange.dto.ExchangeDTO
+import org.example.backend.exchange.dto.ExchangeDto
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.repository.CurrencyRepository
@@ -48,7 +48,7 @@ class ExchangeOrderServiceImplTest : BehaviorSpec({
         val currencyCode = "USD"
         val fromAmount = BigDecimal("100000") // 원화 입력
         val bestBuy =
-            ExchangeDTO(bankId = 1L, currencyId = usd.id!!, bestRate = BigDecimal("1300.00"), ExchangeType.BUY)
+            ExchangeDto(bankId = 1L, currencyId = usd.id!!, bestRate = BigDecimal("1300.00"), ExchangeType.BUY)
 
         // save 결과로 돌아올 엔티티 (id만 있으면 충분)
         val savedOrder = ExchangeOrder(
@@ -116,7 +116,7 @@ class ExchangeOrderServiceImplTest : BehaviorSpec({
         val userId = 99L
         val currencyCode = "USD"
         val bestBuy =
-            ExchangeDTO(bankId = 1L, currencyId = usd.id!!, bestRate = BigDecimal("1300.00"), ExchangeType.BUY)
+            ExchangeDto(bankId = 1L, currencyId = usd.id!!, bestRate = BigDecimal("1300.00"), ExchangeType.BUY)
 
         When("fromAmount < bestRate 이면 예외 발생") {
             every { currencyRepository.findByCode("KRW") } returns krw

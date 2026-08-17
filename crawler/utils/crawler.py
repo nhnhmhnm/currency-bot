@@ -1,21 +1,22 @@
-from utils.DBconnect import insert_rate
-from interfaces.bank_interface import BankCrawler
-from banks.shinhan import ShinhanCrawler
+from banks.hana import HanaCrawler
 from banks.ibk import IBKCrawler
 from banks.sc import ScCrawler
-from banks.hana import HanaCrawler
+from banks.shinhan import ShinhanCrawler
+from interfaces.bank_interface import BankCrawler
+from utils.db_connection import insert_rate
 
 crawlers: list[BankCrawler] = [
     HanaCrawler(),
     IBKCrawler(),
     ScCrawler(),
-    ShinhanCrawler()
+    ShinhanCrawler(),
 ]
 
-def crawl_all():
+
+def crawl_all() -> None:
     for crawler in crawlers:
         try:
-            results = crawler.get_datas() # list[ExchangeRateDTO]
+            results = crawler.fetch_rates()
 
             if not results:
                 print(f"[WARN] {crawler.get_bank().value}: 크롤링 실패")

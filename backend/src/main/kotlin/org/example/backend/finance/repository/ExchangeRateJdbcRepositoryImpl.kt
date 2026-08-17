@@ -1,17 +1,17 @@
 package org.example.backend.finance.repository
 
-import org.example.backend.common.util.toDTO
+import org.example.backend.common.util.toDto
 import org.example.backend.enums.ExchangeType
-import org.example.backend.exchange.dto.ExchangeDTO
+import org.example.backend.exchange.dto.ExchangeDto
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.stereotype.Repository
 
 @Repository
-class ExchangeRateRateJdbcRepositoryImpl(
+class ExchangeRateJdbcRepositoryImpl(
     private val jdbcTemplate: NamedParameterJdbcTemplate
 ) : ExchangeRateJdbcRepository {
-    override fun findBestBuyRate(currencyCode: String): ExchangeDTO? {
+    override fun findBestBuyRate(currencyCode: String): ExchangeDto? {
         val sql = """
             SELECT bank_id, currency_id, buy_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
@@ -33,11 +33,12 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        return jdbcTemplate.query(sql, params) { rs, _ ->
+            toDto(rs, ExchangeType.BUY)
         }.firstOrNull()
     }
 
-    override fun findBestSellRate(currencyCode: String): ExchangeDTO? {
+    override fun findBestSellRate(currencyCode: String): ExchangeDto? {
         val sql = """
             SELECT bank_id, currency_id, sell_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
@@ -59,11 +60,12 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.SELL)
+        return jdbcTemplate.query(sql, params) { rs, _ ->
+            toDto(rs, ExchangeType.SELL)
         }.firstOrNull()
     }
 
-    override fun findBestBuyBaseRate(currencyCode: String): ExchangeDTO? {
+    override fun findBestBuyBaseRate(currencyCode: String): ExchangeDto? {
         val sql = """
             SELECT bank_id, currency_id, base_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
@@ -84,11 +86,12 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.BUY)
+        return jdbcTemplate.query(sql, params) { rs, _ ->
+            toDto(rs, ExchangeType.BUY)
         }.firstOrNull()
     }
 
-    override fun findBestSellBaseRate(currencyCode: String): ExchangeDTO? {
+    override fun findBestSellBaseRate(currencyCode: String): ExchangeDto? {
         val sql = """
             SELECT bank_id, currency_id, base_rate AS best_rate FROM exchange_rate er
             JOIN currency c ON er.currency_id = c.id
@@ -109,7 +112,8 @@ class ExchangeRateRateJdbcRepositoryImpl(
 
         val params = MapSqlParameterSource("currencyCode", currencyCode)
 
-        return jdbcTemplate.query(sql, params) { rs, _ -> toDTO(rs, ExchangeType.SELL)
+        return jdbcTemplate.query(sql, params) { rs, _ ->
+            toDto(rs, ExchangeType.SELL)
         }.firstOrNull()
     }
 }

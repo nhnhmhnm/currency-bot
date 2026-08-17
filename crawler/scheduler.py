@@ -1,5 +1,7 @@
-import schedule
 import time
+
+import schedule
+
 from main import crawl_all
 
 print("[시작] 환율 크롤러")

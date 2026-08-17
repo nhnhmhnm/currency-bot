@@ -4,15 +4,18 @@ import org.example.backend.enums.ExchangeType
 import org.example.backend.exchange.domain.ExchangeLedger
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.domain.Transaction
-import org.example.backend.exchange.dto.*
+import org.example.backend.exchange.dto.ExchangeDto
+import org.example.backend.exchange.dto.ExchangeLedgerResponse
+import org.example.backend.exchange.dto.ExchangeOrderResponse
+import org.example.backend.exchange.dto.TransactionResponse
 import org.example.backend.user.domain.DepositWithdrawal
 import org.example.backend.user.domain.WalletFxHistory
 import org.example.backend.user.dto.DepositWithdrawalResponse
 import org.example.backend.user.dto.WalletFxHistoryResponse
 import java.sql.ResultSet
 
-fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
-    return ExchangeDTO(
+fun toDto(rs: ResultSet, type: ExchangeType): ExchangeDto {
+    return ExchangeDto(
         bankId = rs.getLong("bank_id"),
         currencyId = rs.getLong("currency_id"),
         bestRate = rs.getBigDecimal("best_rate"),
@@ -20,7 +23,7 @@ fun toDTO(rs: ResultSet, type: ExchangeType): ExchangeDTO {
     )
 }
 
-fun ExchangeOrder.toDTO() = ExchangeOrderResponse(
+fun ExchangeOrder.toDto() = ExchangeOrderResponse(
     id = this.id!!,
     userId = this.userId,
     bankId = this.bankId,
@@ -33,7 +36,7 @@ fun ExchangeOrder.toDTO() = ExchangeOrderResponse(
     requestedAt = this.requestedAt!!
 )
 
-fun ExchangeLedger.toDTO() = ExchangeLedgerResponse(
+fun ExchangeLedger.toDto() = ExchangeLedgerResponse(
     id = this.id!!,
     userId = this.userId,
     fromCurrencyId = this.fromCurrencyId,
@@ -48,7 +51,7 @@ fun ExchangeLedger.toDTO() = ExchangeLedgerResponse(
     createdAt = this.createdAt!!
 )
 
-fun Transaction.toDTO() = TransactionResponse(
+fun Transaction.toDto() = TransactionResponse(
     id = this.id!!,
     userId = this.userId,
 //    walletId = this.walletId,
@@ -65,8 +68,8 @@ fun Transaction.toDTO() = TransactionResponse(
     createdAt = this.createdAt!!
 )
 
-fun DepositWithdrawal.toDTO() = DepositWithdrawalResponse(
-    id = requireNotNull(this.id) {"DepositWithdrawal.id is null after save"},
+fun DepositWithdrawal.toDto() = DepositWithdrawalResponse(
+    id = requireNotNull(this.id) { "DepositWithdrawal.id is null after save" },
     userId = this.userId,
     walletId = this.walletId,
     currencyId = this.currencyId,
@@ -75,8 +78,8 @@ fun DepositWithdrawal.toDTO() = DepositWithdrawalResponse(
     executedAt = this.executedAt
 )
 
-fun WalletFxHistory.toDTO() = WalletFxHistoryResponse(
-    id = requireNotNull(this.id) {"WalletFxHistory.id is null after save"},
+fun WalletFxHistory.toDto() = WalletFxHistoryResponse(
+    id = requireNotNull(this.id) { "WalletFxHistory.id is null after save" },
     walletId = this.walletId,
     currencyId = this.currencyId,
     orderId = this.orderId,

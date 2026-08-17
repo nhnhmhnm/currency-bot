@@ -1,83 +1,85 @@
-import requests
-from decimal import Decimal
 from datetime import datetime
-from enum import Enum
-from utils.enums import Currency, Bank
-from interfaces.bank_interface import BankCrawler
+from decimal import Decimal
+
+import requests
+
 from dto.exchange_rate_dto import ExchangeRateDTO
+from interfaces.bank_interface import BankCrawler
+from utils.enums import Bank, Currency
+
 
 class ShinhanCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.SHINHAN
-    
-    def get_datas(self) -> list[ExchangeRateDTO]:
+
+    def fetch_rates(self) -> list[ExchangeRateDTO]:
         today = datetime.now().replace(microsecond=0)
+        datetime_format = "%Y.%m.%d %H:%M:%S"
+        url = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
 
-        DATETIME_FORMAT = "%Y.%m.%d %H:%M:%S"
-
-        URL = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
-
-        PAYLOAD = {
+        payload = {
             "dataBody": {
                 "ricInptRootInfo": {
                     "serviceType": "GU",
                     "serviceCode": "F3733",
                     "callBack": "shbObj.fncF3733Callback",
                     "webUri": "/index.jsp",
-                    "isRule": "N"
+                    "isRule": "N",
                 },
                 "조회구분": "",
                 "조회일자": today.strftime("%Y%m%d"),
-                "고시회차": ""
+                "고시회차": "",
             },
             "dataHeader": {
                 "trxCd": "RSRFO0100A01",
                 "language": "ko",
                 "subChannel": "49",
-                "channelGbn": "D0"
-            }
+                "channelGbn": "D0",
+            },
         }
 
         try:
-            res = requests.post(URL, json=PAYLOAD)
-            res.raise_for_status()
-            data = res.json()
-        
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
             # 고시시간
             date_str = data["dataBody"]["고시일자_display"]
             time_str = data["dataBody"]["고시시간_display"]
-            
+
             datetime_str = f"{date_str} {time_str}"
-            timestamp = datetime.strptime(datetime_str, DATETIME_FORMAT)
+            timestamp = datetime.strptime(datetime_str, datetime_format)
 
             # 통화
-            rates = data["dataBody"]["R_RIBF3733_1"] # request의 통화 정보 리스트
-            targets = set(c.value for c in Currency) # rates에서 찾아야 할 target 통화
-            
-            dto: list[ExchangeRateDTO] = []
+            rates = data["dataBody"]["R_RIBF3733_1"]
+            targets = {currency.value for currency in Currency}
+
+            exchange_rates: list[ExchangeRateDTO] = []
 
             for rate in rates:
-                try :
-                    code = rate["통화CODE"]
-                    
-                    if code in targets :
-                        dto.append(ExchangeRateDTO(
-                            bank = Bank.SHINHAN,
-                            currency = Currency(code),
-                            base_rate = Decimal(rate["매매기준환율"]),
-                            buy_rate = Decimal(rate["전신환매도환율"]),
-                            sell_rate = Decimal(rate["전신환매입환율"]),
-                            notice_time = timestamp,
-                            created_at = today
-                        ))
+                code = rate.get("통화CODE")
+
+                try:
+                    if code in targets:
+                        exchange_rates.append(
+                            ExchangeRateDTO(
+                                bank=Bank.SHINHAN,
+                                currency=Currency(code),
+                                base_rate=Decimal(rate["매매기준환율"]),
+                                buy_rate=Decimal(rate["전신환매도환율"]),
+                                sell_rate=Decimal(rate["전신환매입환율"]),
+                                notice_time=timestamp,
+                                created_at=today,
+                            )
+                        )
 
                 except Exception as e:
                     print(f"[WARN] 신한은행 {code} 환율 파싱 실패: {e}")
                     continue
 
-            return dto
+            return exchange_rates
 
         except Exception as e:
             print(f"[ERROR] ShinhanCrawler 실패: {e}")
-            
+
             return []

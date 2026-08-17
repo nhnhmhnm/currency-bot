@@ -1,5 +1,7 @@
-from utils.notice_time import parse_notice_time
 from datetime import datetime
+
+from utils.notice_time import parse_notice_time
+
 
 def test_parse_notice_time():
     text = """

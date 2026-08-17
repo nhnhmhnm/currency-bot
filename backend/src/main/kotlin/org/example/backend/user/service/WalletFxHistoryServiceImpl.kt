@@ -1,6 +1,6 @@
 package org.example.backend.user.service
 
-import org.example.backend.common.util.toDTO
+import org.example.backend.common.util.toDto
 import org.example.backend.user.domain.WalletFxHistory
 import org.example.backend.user.dto.WalletFxCommand
 import org.example.backend.user.dto.WalletFxHistoryResponse
@@ -23,7 +23,7 @@ class WalletFxHistoryServiceImpl (
     )
     val saved = walletFxHistoryRepository.save(entity)
 
-    return saved.toDTO()
+    return saved.toDto()
   }
 
 }

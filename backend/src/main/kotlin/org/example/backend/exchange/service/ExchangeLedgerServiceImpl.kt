@@ -1,6 +1,6 @@
 package org.example.backend.exchange.service
 
-import org.example.backend.common.util.toDTO
+import org.example.backend.common.util.toDto
 import org.example.backend.exchange.domain.ExchangeLedger
 import org.example.backend.exchange.dto.ExchangeLedgerCommand
 import org.example.backend.exchange.dto.ExchangeLedgerResponse
@@ -26,6 +26,6 @@ class ExchangeLedgerServiceImpl(
         )
         val saved = exchangeLedgerRepository.save(entity)
 
-        return saved.toDTO()
+        return saved.toDto()
     }
 }

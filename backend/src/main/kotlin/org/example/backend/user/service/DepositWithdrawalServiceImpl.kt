@@ -1,6 +1,6 @@
 package org.example.backend.user.service
 
-import org.example.backend.common.util.toDTO
+import org.example.backend.common.util.toDto
 import org.example.backend.user.domain.DepositWithdrawal
 import org.example.backend.user.dto.DepositWithdrawalCommand
 import org.example.backend.user.dto.DepositWithdrawalResponse
@@ -21,7 +21,7 @@ class DepositWithdrawalServiceImpl (
     )
     val saved = depositWithdrawalRepository.save(entity)
 
-    return saved.toDTO()
+    return saved.toDto()
   }
 
 }

@@ -1,27 +1,30 @@
-import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 from decimal import Decimal
 
-from utils.enums import Bank, Currency
-from utils.notice_time import parse_notice_time
+import requests
+from bs4 import BeautifulSoup
+
 from dto.exchange_rate_dto import ExchangeRateDTO
 from interfaces.bank_interface import BankCrawler
+from utils.enums import Bank, Currency
+from utils.notice_time import parse_notice_time
 
 
 class IBKCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.IBK
 
-    def get_datas(self) -> list[ExchangeRateDTO]:
+    def fetch_rates(self) -> list[ExchangeRateDTO]:
         url = "https://www.ibk.co.kr/fxtr/excRateList.ibk?pageId=SM03020100"
         today = datetime.now().replace(microsecond=0)
         results: list[ExchangeRateDTO] = []
 
         try:
-            response = requests.get(url, headers={
-                "User-Agent": "Mozilla/5.0"
-            }, timeout=10)
+            response = requests.get(
+                url,
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
             response.raise_for_status()
 
             soup = BeautifulSoup(response.text, "html.parser")
@@ -67,7 +70,7 @@ class IBKCrawler(BankCrawler):
                         buy_rate=sell_rate,
                         sell_rate=buy_rate,
                         notice_time=timestamp,
-                        created_at=today
+                        created_at=today,
                     )
                     results.append(dto)
                 except Exception as e:
