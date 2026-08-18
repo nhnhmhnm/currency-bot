@@ -1,6 +1,6 @@
 import mysql.connector
 
-from dto.exchange_rate_dto import ExchangeRateDTO
+from dto.exchange_rate_dto import ExchangeRateDto
 
 REFERENCE_TABLES = {"bank", "currency"}
 
@@ -19,15 +19,15 @@ def get_foreign_key_id(cursor, table: str, code: str) -> int:
     return result[0]
 
 
-def insert_rate(dto: ExchangeRateDTO) -> None:
+def insert_rate(exchange_rate: ExchangeRateDto) -> None:
     from config import DB_CONFIG
 
     try:
         with mysql.connector.connect(**DB_CONFIG) as conn:
             with conn.cursor() as cursor:
                 # 외래키 조회
-                bank_id = get_foreign_key_id(cursor, "bank", dto.bank.value)
-                currency_id = get_foreign_key_id(cursor, "currency", dto.currency.value)
+                bank_id = get_foreign_key_id(cursor, "bank", exchange_rate.bank.value)
+                currency_id = get_foreign_key_id(cursor, "currency", exchange_rate.currency.value)
 
                 # INSERT
                 sql = """
@@ -45,19 +45,19 @@ def insert_rate(dto: ExchangeRateDTO) -> None:
                     (
                         bank_id,
                         currency_id,
-                        dto.base_rate,
-                        dto.buy_rate,
-                        dto.sell_rate,
-                        dto.notice_time,
-                        dto.created_at,
+                        exchange_rate.base_rate,
+                        exchange_rate.buy_rate,
+                        exchange_rate.sell_rate,
+                        exchange_rate.notice_time,
+                        exchange_rate.created_at,
                     ),
                 )
                 conn.commit()
 
                 print(
                     "[DB] 저장 성공 : "
-                    f"{dto.bank.value} {dto.currency.value} "
-                    f"{dto.base_rate} {dto.created_at}"
+                    f"{exchange_rate.bank.value} {exchange_rate.currency.value} "
+                    f"{exchange_rate.base_rate} {exchange_rate.created_at}"
                 )
 
     except Exception as e:

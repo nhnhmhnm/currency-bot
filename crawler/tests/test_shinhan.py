@@ -7,9 +7,9 @@ from utils.enums import Currency
 # 환율을 제대로 가져왔는지 확인
 @pytest.mark.integration
 def test_fetch_shinhan_jpy_rate():
-    results = ShinhanCrawler().fetch_rates()
-    result = next((rate for rate in results if rate.currency == Currency.JPY), None)
+    exchange_rates = ShinhanCrawler().fetch_rates()
+    jpy_rate = next((rate for rate in exchange_rates if rate.currency == Currency.JPY), None)
 
-    if result:
-        assert result.bank.value == "088"
-        assert result.currency == Currency.JPY
+    if jpy_rate:
+        assert jpy_rate.bank.value == "088"
+        assert jpy_rate.currency == Currency.JPY

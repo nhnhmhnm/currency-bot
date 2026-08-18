@@ -4,7 +4,7 @@ import org.example.backend.enums.ExchangeType
 import org.example.backend.exchange.domain.ExchangeLedger
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.domain.Transaction
-import org.example.backend.exchange.dto.ExchangeDto
+import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.dto.ExchangeLedgerResponse
 import org.example.backend.exchange.dto.ExchangeOrderResponse
 import org.example.backend.exchange.dto.TransactionResponse
@@ -14,8 +14,8 @@ import org.example.backend.user.dto.DepositWithdrawalResponse
 import org.example.backend.user.dto.WalletFxHistoryResponse
 import java.sql.ResultSet
 
-fun toDto(rs: ResultSet, type: ExchangeType): ExchangeDto {
-    return ExchangeDto(
+fun toBestExchangeRateDto(rs: ResultSet, type: ExchangeType): BestExchangeRateDto {
+    return BestExchangeRateDto(
         bankId = rs.getLong("bank_id"),
         currencyId = rs.getLong("currency_id"),
         bestRate = rs.getBigDecimal("best_rate"),

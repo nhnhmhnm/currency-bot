@@ -4,7 +4,7 @@ from decimal import Decimal
 import requests
 from bs4 import BeautifulSoup
 
-from dto.exchange_rate_dto import ExchangeRateDTO
+from dto.exchange_rate_dto import ExchangeRateDto
 from interfaces.bank_interface import BankCrawler
 from utils.enums import Bank, Currency
 from utils.notice_time import parse_notice_time
@@ -14,10 +14,10 @@ class IBKCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.IBK
 
-    def fetch_rates(self) -> list[ExchangeRateDTO]:
+    def fetch_rates(self) -> list[ExchangeRateDto]:
         url = "https://www.ibk.co.kr/fxtr/excRateList.ibk?pageId=SM03020100"
         today = datetime.now().replace(microsecond=0)
-        results: list[ExchangeRateDTO] = []
+        exchange_rates: list[ExchangeRateDto] = []
 
         try:
             response = requests.get(
@@ -63,7 +63,7 @@ class IBKCrawler(BankCrawler):
                     buy_rate = Decimal(tds[2].text.strip().replace(",", ""))
                     sell_rate = Decimal(tds[1].text.strip().replace(",", ""))
 
-                    dto = ExchangeRateDTO(
+                    exchange_rate = ExchangeRateDto(
                         bank=Bank.IBK,
                         currency=currency,
                         base_rate=base_rate,
@@ -72,7 +72,7 @@ class IBKCrawler(BankCrawler):
                         notice_time=timestamp,
                         created_at=today,
                     )
-                    results.append(dto)
+                    exchange_rates.append(exchange_rate)
                 except Exception as e:
                     print(f"[WARN] IBK {code_text} 환율 파싱 실패: {e}")
                     continue
@@ -80,4 +80,4 @@ class IBKCrawler(BankCrawler):
         except Exception as e:
             print(f"[ERROR] IBK 크롤링 실패: {e}")
 
-        return results
+        return exchange_rates

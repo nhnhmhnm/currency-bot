@@ -4,7 +4,7 @@ from decimal import Decimal
 import requests
 from bs4 import BeautifulSoup
 
-from dto.exchange_rate_dto import ExchangeRateDTO
+from dto.exchange_rate_dto import ExchangeRateDto
 from interfaces.bank_interface import BankCrawler
 from utils.enums import Bank, Currency
 
@@ -13,7 +13,7 @@ class HanaCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.HANA
 
-    def fetch_rates(self) -> list[ExchangeRateDTO]:
+    def fetch_rates(self) -> list[ExchangeRateDto]:
         today = datetime.now().replace(microsecond=0)
 
         url = "https://www.kebhana.com/cms/rate/wpfxd651_01i_01.do"
@@ -37,7 +37,7 @@ class HanaCrawler(BankCrawler):
             "requestTarget": "searchContentDiv",
         }
 
-        exchange_rates: list[ExchangeRateDTO] = []
+        exchange_rates: list[ExchangeRateDto] = []
 
         try:
             response = requests.post(url, headers=headers, data=payload, timeout=10)
@@ -87,7 +87,7 @@ class HanaCrawler(BankCrawler):
                     sell_rate = Decimal(tds[6].text.strip().replace(",", ""))
 
                     exchange_rates.append(
-                        ExchangeRateDTO(
+                        ExchangeRateDto(
                             bank=Bank.HANA,
                             currency=Currency(code),
                             base_rate=base_rate,

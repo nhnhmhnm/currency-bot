@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import requests
 
-from dto.exchange_rate_dto import ExchangeRateDTO
+from dto.exchange_rate_dto import ExchangeRateDto
 from interfaces.bank_interface import BankCrawler
 from utils.enums import Bank, Currency
 
@@ -12,7 +12,7 @@ class ShinhanCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.SHINHAN
 
-    def fetch_rates(self) -> list[ExchangeRateDTO]:
+    def fetch_rates(self) -> list[ExchangeRateDto]:
         today = datetime.now().replace(microsecond=0)
         datetime_format = "%Y.%m.%d %H:%M:%S"
         url = "https://bank.shinhan.com/serviceEndpoint/httpDigital"
@@ -54,7 +54,7 @@ class ShinhanCrawler(BankCrawler):
             rates = data["dataBody"]["R_RIBF3733_1"]
             targets = {currency.value for currency in Currency}
 
-            exchange_rates: list[ExchangeRateDTO] = []
+            exchange_rates: list[ExchangeRateDto] = []
 
             for rate in rates:
                 code = rate.get("통화CODE")
@@ -62,7 +62,7 @@ class ShinhanCrawler(BankCrawler):
                 try:
                     if code in targets:
                         exchange_rates.append(
-                            ExchangeRateDTO(
+                            ExchangeRateDto(
                                 bank=Bank.SHINHAN,
                                 currency=Currency(code),
                                 base_rate=Decimal(rate["매매기준환율"]),

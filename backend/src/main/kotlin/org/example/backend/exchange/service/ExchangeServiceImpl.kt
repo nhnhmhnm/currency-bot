@@ -1,6 +1,6 @@
 package org.example.backend.exchange.service
 
-import org.example.backend.exchange.dto.ExchangeDto
+import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.repository.ExchangeRateJdbcRepository
 import org.springframework.stereotype.Service
@@ -12,32 +12,32 @@ class ExchangeServiceImpl(
     private val exchangeRateJdbcRepository: ExchangeRateJdbcRepository
 ): ExchangeService {
 
-    override fun getBestBuyRate(currencyCode: String): ExchangeDto {
-        val dto = exchangeRateJdbcRepository.findBestBuyRate(currencyCode)
+    override fun getBestBuyRate(currencyCode: String): BestExchangeRateDto {
+        val bestBuyRate = exchangeRateJdbcRepository.findBestBuyRate(currencyCode)
             ?: throw IllegalStateException("No buy rate found for $currencyCode")
 
-        return dto
+        return bestBuyRate
     }
 
-    override fun getBestSellRate(currencyCode: String): ExchangeDto {
-        val dto = exchangeRateJdbcRepository.findBestSellRate(currencyCode)
+    override fun getBestSellRate(currencyCode: String): BestExchangeRateDto {
+        val bestSellRate = exchangeRateJdbcRepository.findBestSellRate(currencyCode)
             ?: throw IllegalStateException("No sell rate found for $currencyCode")
 
-        return dto
+        return bestSellRate
     }
 
-    override fun getBestBuyBaseRate(currencyCode: String): ExchangeDto {
-        val dto = exchangeRateJdbcRepository.findBestBuyBaseRate(currencyCode)
+    override fun getBestBuyBaseRate(currencyCode: String): BestExchangeRateDto {
+        val bestBuyBaseRate = exchangeRateJdbcRepository.findBestBuyBaseRate(currencyCode)
             ?: throw IllegalStateException("No buy base rate found for $currencyCode")
 
-        return dto
+        return bestBuyBaseRate
     }
 
-    override fun getBestSellBaseRate(currencyCode: String): ExchangeDto {
-        val dto = exchangeRateJdbcRepository.findBestSellBaseRate(currencyCode)
+    override fun getBestSellBaseRate(currencyCode: String): BestExchangeRateDto {
+        val bestSellBaseRate = exchangeRateJdbcRepository.findBestSellBaseRate(currencyCode)
             ?: throw IllegalStateException("No sell base rate found for $currencyCode")
 
-        return dto
+        return bestSellBaseRate
     }
 
     override fun calculateExchange(fromCurrency: Currency, toCurrency: Currency,

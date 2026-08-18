@@ -32,7 +32,7 @@ Kotlin 코드는 Kotlin 공식 코딩 컨벤션을 따른다. 에디터 설정�
 - 클래스, 인터페이스, enum class, data class는 `PascalCase`를 사용한다.
 - 함수, 변수, property, parameter는 `camelCase`를 사용한다.
 - 상수는 `UPPER_SNAKE_CASE`를 사용한다.
-- 파일명은 대표 public class/object 이름과 맞춘다. 예: `ExchangeDto.kt`
+- 파일명은 대표 public class/object 이름과 맞춘다. 예: `BestExchangeRateDto.kt`
 - 약어는 일반 단어처럼 취급한다. 예: `Dto`, `Url`, `Id`
 - 확장 함수도 일반 함수처럼 `camelCase`를 사용한다. 예: `toDto`
 - 불필요한 wildcard import는 피하고 명시적 import를 사용한다.

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import requests
 
-from dto.exchange_rate_dto import ExchangeRateDTO
+from dto.exchange_rate_dto import ExchangeRateDto
 from interfaces.bank_interface import BankCrawler
 from utils.enums import Bank, Currency
 
@@ -12,7 +12,7 @@ class ScCrawler(BankCrawler):
     def get_bank(self) -> Bank:
         return Bank.SC
 
-    def fetch_rates(self) -> list[ExchangeRateDTO]:
+    def fetch_rates(self) -> list[ExchangeRateDto]:
         datetime_format = "%Y%m%d%H%M%S"
         url = "https://www.standardchartered.co.kr/np/kr/pl/et/selectExchangeRateList"
         today = datetime.now().replace(microsecond=0)
@@ -34,7 +34,7 @@ class ScCrawler(BankCrawler):
             data = response.json()
 
             targets = {currency.value for currency in Currency}
-            exchange_rates: list[ExchangeRateDTO] = []
+            exchange_rates: list[ExchangeRateDto] = []
 
             for rates in data.get("vector", []):
                 raw = rates.get("TYPE_A_RESULT", {})
@@ -48,7 +48,7 @@ class ScCrawler(BankCrawler):
                         timestamp = datetime.strptime(raw["DATETIME"], datetime_format)
 
                         exchange_rates.append(
-                            ExchangeRateDTO(
+                            ExchangeRateDto(
                                 bank=Bank.SC,
                                 currency=Currency(code),
                                 base_rate=Decimal(raw["TMP_RATE"].replace(",", "")),

@@ -6,7 +6,7 @@ from utils.enums import Bank, Currency
 
 
 @dataclass
-class ExchangeRateDTO:
+class ExchangeRateDto:
     bank: Bank
     currency: Currency
     base_rate: Decimal

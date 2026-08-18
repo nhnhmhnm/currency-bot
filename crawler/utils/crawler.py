@@ -5,7 +5,7 @@ from banks.shinhan import ShinhanCrawler
 from interfaces.bank_interface import BankCrawler
 from utils.db_connection import insert_rate
 
-crawlers: list[BankCrawler] = [
+BANK_CRAWLERS: list[BankCrawler] = [
     HanaCrawler(),
     IBKCrawler(),
     ScCrawler(),
@@ -14,17 +14,17 @@ crawlers: list[BankCrawler] = [
 
 
 def crawl_all() -> None:
-    for crawler in crawlers:
+    for crawler in BANK_CRAWLERS:
         try:
-            results = crawler.fetch_rates()
+            exchange_rates = crawler.fetch_rates()
 
-            if not results:
+            if not exchange_rates:
                 print(f"[WARN] {crawler.get_bank().value}: 크롤링 실패")
                 continue
 
-            for dto in results:
-                insert_rate(dto)
-                print(f"[SUCCESS] {dto.bank.value} {dto.currency.value} 저장 완료")
+            for exchange_rate in exchange_rates:
+                insert_rate(exchange_rate)
+                print(f"[SUCCESS] {exchange_rate.bank.value} {exchange_rate.currency.value} 저장 완료")
 
         except Exception as e:
             print(f"[ERROR] {crawler.get_bank().value} 처리 중 예외 발생: {e}")
