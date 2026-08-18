@@ -1,26 +1,31 @@
 package org.example.backend.exchange.service
 
 import io.kotest.assertions.throwables.shouldThrow
-import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import io.mockk.*
+import io.mockk.clearAllMocks
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import org.example.backend.enums.ExchangeType
 import org.example.backend.enums.OrderStatus
+import org.example.backend.enums.OrderType
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.repository.CurrencyRepository
+import org.example.backend.user.domain.Account
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.service.WalletService
 import java.math.BigDecimal
-import java.time.LocalDateTime
+import java.util.Optional
 
-class ExchangeOrderServiceImplTest : BehaviorSpec({
+class ExchangeOrderServiceImplTest : FunSpec({
     val exchangeOrderRepository = mockk<ExchangeOrderRepository>()
     val exchangeService = mockk<ExchangeService>()
-    val transactionService = mockk<TransactionService>()
-    val ledgerService = mockk<ExchangeLedgerService>()
+    val transactionService = mockk<TransactionService>(relaxed = true)
+    val ledgerService = mockk<ExchangeLedgerService>(relaxed = true)
     val currencyRepository = mockk<CurrencyRepository>()
     val walletService = mockk<WalletService>()
     val accountRepository = mockk<AccountRepository>()
@@ -35,101 +40,118 @@ class ExchangeOrderServiceImplTest : BehaviorSpec({
         accountRepository = accountRepository
     )
 
-    val krw = Currency(id = 1L, code = "KRW", name = "대한민국 원", scale = 0, unit = BigDecimal.ONE)
-    val usd = Currency(id = 2L, code = "USD", name = "미국 달러", scale = 2, unit = BigDecimal.ONE)
-    val jpy = Currency(id = 3L, code = "JPY", name = "일본 엔", scale = 0, unit = BigDecimal("100"))
+    val krw = Currency(id = 1L, code = "KRW", name = "Korean Won", scale = 0, unit = BigDecimal.ONE)
+    val usd = Currency(id = 2L, code = "USD", name = "US Dollar", scale = 2, unit = BigDecimal.ONE)
 
     beforeTest {
         clearAllMocks()
     }
 
-    Given("정상적으로 buyOrder가 호출되면") {
+    test("buyOrder settles a valid buy order and records transaction/ledger") {
         val userId = 10L
         val currencyCode = "USD"
-        val fromAmount = BigDecimal("100000") // 원화 입력
-        val bestBuy =
-            BestExchangeRateDto(bankId = 1L, currencyId = usd.id!!, bestRate = BigDecimal("1300.00"), ExchangeType.BUY)
-
-        // save 결과로 돌아올 엔티티 (id만 있으면 충분)
+        val fromAmount = BigDecimal("100000")
+        val bestBuy = BestExchangeRateDto(
+            bankId = 1L,
+            currencyId = usd.id,
+            bestRate = BigDecimal("1300.00"),
+            ExchangeType.BUY
+        )
         val savedOrder = ExchangeOrder(
             id = 11L,
             userId = userId,
-            bankId = bestBuy.bankId,
-            fromCurrencyId = krw.id!!,
-            toCurrencyId = usd.id!!,
+            bankId = 0L,
+            fromCurrencyId = krw.id,
+            toCurrencyId = usd.id,
             fromAmount = fromAmount,
             toAmount = BigDecimal.ZERO,
-            exchangeRate = bestBuy.bestRate,
-            status = OrderStatus.PENDING,
-            requestedAt = LocalDateTime.now()
+            exchangeRate = BigDecimal.ZERO,
+            orderType = OrderType.BUY,
+            status = OrderStatus.PROCESSING
+        )
+        val companyKrwAccount = Account(
+            id = 101L,
+            userId = 1L,
+            bankId = 1L,
+            currencyId = krw.id,
+            accountNum = "222222-22-222222"
+        )
+        val companyUsdAccount = Account(
+            id = 102L,
+            userId = 1L,
+            bankId = 4L,
+            currencyId = usd.id,
+            accountNum = "444444-44-444444"
+        )
+        val commissionAccount = Account(
+            id = 103L,
+            userId = 1L,
+            bankId = 1L,
+            currencyId = krw.id,
+            accountNum = "111111-11-111111"
         )
 
-        When("일반 구매일 경우") {
-            // 통화 조회
-            every { currencyRepository.findByCode("KRW") } returns krw
-            every { currencyRepository.findByCode(currencyCode) } returns usd
+        every { currencyRepository.findByCode("KRW") } returns krw
+        every { currencyRepository.findByCode(currencyCode) } returns usd
+        every { currencyRepository.findById(krw.id) } returns Optional.of(krw)
+        every { currencyRepository.findById(usd.id) } returns Optional.of(usd)
+        every { exchangeOrderRepository.save(any()) } returns savedOrder
+        every { exchangeService.getBestBuyRate(currencyCode) } returns bestBuy
+        every {
+            exchangeService.calculateExchange(krw, usd, bestBuy.bestRate, BigDecimal("99997"))
+        } returns (BigDecimal("76.92") to BigDecimal.ZERO)
+        every {
+            accountRepository.findByCurrencyIdAndAccountNum(krw.id, "222222-22-222222")
+        } returns companyKrwAccount
+        every {
+            accountRepository.findByCurrencyIdAndAccountNum(usd.id, "444444-44-444444")
+        } returns companyUsdAccount
+        every {
+            accountRepository.findByCurrencyIdAndAccountNum(krw.id, "111111-11-111111")
+        } returns commissionAccount
+        every { walletService.userToCompany(any(), any(), any(), any(), any()) } returns BigDecimal.ZERO
+        every { walletService.bankToCompany(any(), any(), any()) } returns BigDecimal.ZERO
+        every { walletService.companyToUser(any(), any(), any(), any(), any()) } returns BigDecimal.ZERO
 
-            // 최적 환율
-            every { exchangeService.getBestBuyRate(currencyCode) } returns bestBuy
+        val res = sut.buyOrder(userId, currencyCode, fromAmount, false)
 
-            // 수수료 계산
-//            val commission = fromAmount.multiply(BigDecimal("0.0005")).setScale(0, RoundingMode.UP)
-//            val exchangeAmount = fromAmount - commission
-
-            // 환전 결과
-            every {
-                exchangeService.calculateExchange(
-                    any(),
-                    any(),
-                    any(),
-                    any()
-                )
-            } returns (BigDecimal("77.00") to BigDecimal.ZERO)
-
-            // 주문 저장
-            every { exchangeOrderRepository.save(any()) } returns savedOrder
-
-            // 금액 이동
-            every { walletService.userToCompany(any(), any(), any(), any()) }
-            every { walletService.userToCompany(any(), any(), any(), any()) }
-
-            every { walletService.bankToCompany(any(), any(), any()) }
-            every { walletService.bankToCompany(any(), any(), any()) }
-
-            every { walletService.companyToUser(any(), any(), any(), any()) }
-
-            // 기록 저장
-            verify(exactly = 2) { transactionService.record(any()) }
-            verify(exactly = 1) { ledgerService.record(any()) }
-
-            val orderResponse = sut.buyOrder(userId, currencyCode, fromAmount, false)
-
-            Then("주문 상태는 SUCCESS") {
-                orderResponse.status shouldBe OrderStatus.SUCCESS
-                orderResponse.toAmount shouldBe BigDecimal("77.00")
-            }
-        }
-
-
+        res.status shouldBe OrderStatus.SETTLED
+        res.toAmount shouldBe BigDecimal("76.92")
+        verify(exactly = 2) { transactionService.record(any()) }
+        verify(exactly = 1) { ledgerService.record(any()) }
     }
-    Given("buyOrder 최소 금액 검증") {
+
+    test("buyOrder rejects an amount below the minimum buy amount") {
         val userId = 99L
         val currencyCode = "USD"
-        val bestBuy =
-            BestExchangeRateDto(bankId = 1L, currencyId = usd.id!!, bestRate = BigDecimal("1300.00"), ExchangeType.BUY)
+        val bestBuy = BestExchangeRateDto(
+            bankId = 1L,
+            currencyId = usd.id,
+            bestRate = BigDecimal("1300.00"),
+            ExchangeType.BUY
+        )
+        val savedOrder = ExchangeOrder(
+            id = 12L,
+            userId = userId,
+            bankId = 0L,
+            fromCurrencyId = krw.id,
+            toCurrencyId = usd.id,
+            fromAmount = BigDecimal("1000"),
+            toAmount = BigDecimal.ZERO,
+            exchangeRate = BigDecimal.ZERO,
+            orderType = OrderType.BUY,
+            status = OrderStatus.PROCESSING
+        )
 
-        When("fromAmount < bestRate 이면 예외 발생") {
-            every { currencyRepository.findByCode("KRW") } returns krw
-            every { currencyRepository.findByCode(currencyCode) } returns usd
-            every { exchangeService.getBestBuyRate(currencyCode) } returns bestBuy
+        every { currencyRepository.findByCode("KRW") } returns krw
+        every { currencyRepository.findByCode(currencyCode) } returns usd
+        every { currencyRepository.findById(krw.id) } returns Optional.of(krw)
+        every { currencyRepository.findById(usd.id) } returns Optional.of(usd)
+        every { exchangeOrderRepository.save(any()) } returns savedOrder
+        every { exchangeService.getBestBuyRate(currencyCode) } returns bestBuy
 
-            Then("IllegalArgumentException") {
-                shouldThrow<IllegalArgumentException> {
-                    sut.buyOrder(userId, currencyCode, BigDecimal("1000"), false)
-                }
-            }
+        shouldThrow<IllegalArgumentException> {
+            sut.buyOrder(userId, currencyCode, BigDecimal("1000"), false)
         }
     }
-
-
 })

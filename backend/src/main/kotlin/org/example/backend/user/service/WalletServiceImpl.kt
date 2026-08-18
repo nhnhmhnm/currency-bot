@@ -1,47 +1,39 @@
 package org.example.backend.user.service
 
 import org.example.backend.enums.CompanyAccount
-import org.example.backend.enums.UserType
-import org.example.backend.enums.WalletFxHistoryType
+import org.example.backend.enums.TransferReason
 import org.example.backend.enums.WalletTransactionType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
+import org.example.backend.user.dto.BalanceRef
 import org.example.backend.user.dto.DepositWithdrawalCommand
-import org.example.backend.user.dto.WalletFxCommand
+import org.example.backend.user.dto.MoneyMovementCommand
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
-import java.math.RoundingMode
 
 @Service
 class WalletServiceImpl(
     private val walletRepository: WalletRepository,
     private val accountRepository: AccountRepository,
     private val depositWithdrawalService: DepositWithdrawalService,
-    private val walletFxHistoryService: WalletFxHistoryService
+    private val moneyMovementService: MoneyMovementService
 ) : WalletService {
-//    private fun getForUpdate(userId: Long, currencyId: Long) =
-//        walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
-//            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
     @Transactional
     override fun connectAccount(userId: Long, bankId: Long, accountNum: String) {
-        // 계좌 조회 (은행 번호 + 계좌 번호)
         val account = accountRepository.findByBankIdAndAccountNum(bankId, accountNum)
             ?: throw UserException(ErrorCode.ACCOUNT_NOT_FOUND)
 
-        // 해당 계좌가 본인 소유인지 확인
         if (account.userId != userId) {
             throw UserException(ErrorCode.INCORRECT_OWNER)
         }
 
-        // 해당 통화에 해당하는 지갑 찾기
         val wallet = walletRepository.findByUserIdAndCurrencyId(userId, account.currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
-        // 지갑에 계좌 연결
         wallet.accountId = account.id
         wallet.isConnected = true
 
@@ -54,30 +46,24 @@ class WalletServiceImpl(
 
     @Transactional
     override fun depositFromAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
-        // 유저 지갑 조회
         val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
-        // 연결된 계좌 확인
         val userAccount = wallet.accountId?.let { accountRepository.findById(it).orElse(null) }
             ?: throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
 
-        // SUPER 계정 찾기
-        val superAccount = accountRepository.findByBankIdAndAccountNum(CompanyAccount.KRW_ACCOUNT.bankId, CompanyAccount.KRW_ACCOUNT.accountNum)
-            ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
-//        val superAccount = accountRepository.findByCurrencyIdAndUser_Type(currencyId, UserType.SUPER)
-//            ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
+        val superAccount = accountRepository.findByBankIdAndAccountNum(
+            CompanyAccount.KRW_ACCOUNT.bankId,
+            CompanyAccount.KRW_ACCOUNT.accountNum
+        ) ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
 
-        // 금액 검증
         if (userAccount.balance < amount) {
             throw UserException(ErrorCode.INSUFFICIENT_ACCOUNT_BALANCE)
         }
 
-        // userAccount -> superAccount 송금
         userAccount.balance = userAccount.balance.minus(amount)
         superAccount.balance = superAccount.balance.plus(amount)
 
-        // SUPER 계좌에서 입금 확인 후, 지갑에 금액 충전
         superAccount.balance = superAccount.balance.minus(amount)
         wallet.balance = wallet.balance.plus(amount)
 
@@ -85,196 +71,136 @@ class WalletServiceImpl(
         accountRepository.save(superAccount)
         walletRepository.save(wallet)
 
-        val deposit = DepositWithdrawalCommand(
-            userId = userId,
-            walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
-            currencyId = currencyId,
-            amount = amount,
-            type = WalletTransactionType.DEPOSIT
+        depositWithdrawalService.record(
+            DepositWithdrawalCommand(
+                userId = userId,
+                walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
+                currencyId = currencyId,
+                amount = amount,
+                type = WalletTransactionType.DEPOSIT
+            )
         )
-
-        depositWithdrawalService.record(deposit)
 
         return wallet.balance
     }
 
     @Transactional
     override fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
-        // 지갑 조회
         val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
-        // 금액 검증
         if (wallet.balance < amount) {
             throw UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
         }
 
-        // 연결된 계좌 확인
         val userAccount = wallet.accountId?.let { accountRepository.findById(it).orElse(null) }
             ?: throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
 
-        // 지갑 -> 계좌 이체
         wallet.balance = wallet.balance.minus(amount)
         userAccount.balance = userAccount.balance.plus(amount)
 
         walletRepository.save(wallet)
         accountRepository.save(userAccount)
 
-        val withdrawal = DepositWithdrawalCommand(
-            userId = userId,
-            walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
-            currencyId = currencyId,
-            amount = amount,
-            type = WalletTransactionType.WITHDRAWAL
+        depositWithdrawalService.record(
+            DepositWithdrawalCommand(
+                userId = userId,
+                walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
+                currencyId = currencyId,
+                amount = amount,
+                type = WalletTransactionType.WITHDRAWAL
+            )
         )
-
-        depositWithdrawalService.record(withdrawal)
 
         return wallet.balance
     }
 
     @Transactional
     override fun companyToCompany(fromAccountId: Long, toAccountId: Long, amount: BigDecimal): BigDecimal {
-        // 회사 계좌 조회
         val fromAccount = accountRepository.findById(fromAccountId)
             .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
-        val toAccount = accountRepository.findById(toAccountId)
-            .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
 
-        // 금액 검증
-        require(fromAccount.balance >= amount) {
-            UserException(ErrorCode.INSUFFICIENT_ACCOUNT_BALANCE)
-        }
-
-        // 회사 계좌 간 송금
-        fromAccount.balance = fromAccount.balance.minus(amount)
-        toAccount.balance = toAccount.balance.plus(amount)
-
-        // 계좌 정보 저장
-        accountRepository.save(fromAccount)
-        accountRepository.save(toAccount)
-
-        // 최종 잔액 반환 -> 나중에 dto로 변경
-        return toAccount.balance
+        return moneyMovementService.transfer(
+            MoneyMovementCommand(
+                source = BalanceRef.companyAccount(fromAccountId),
+                target = BalanceRef.companyAccount(toAccountId),
+                currencyId = fromAccount.currencyId,
+                amount = amount,
+                orderId = null,
+                reason = TransferReason.FX_SELL_COMMISSION
+            )
+        ) ?: BigDecimal.ZERO
     }
 
     @Transactional
     override fun bankToCompany(accountId: Long, bankId: Long, amount: BigDecimal): BigDecimal {
-        // 회사 계좌 조회
         val companyAccount = accountRepository.findById(accountId)
             .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
 
-        if (amount > BigDecimal.ZERO) { // 은행 -> 회사 계좌
-            companyAccount.balance = companyAccount.balance.plus(amount) // amount : 환전된 금액 toAmount
+        val source = if (amount > BigDecimal.ZERO) {
+            BalanceRef.bankExternal()
+        } else {
+            BalanceRef.companyAccount(accountId)
         }
-        else { // 회사 계좌 -> 은행
-            require(companyAccount.balance >= amount.abs()) {
-                UserException(ErrorCode.INSUFFICIENT_ACCOUNT_BALANCE) }
-
-            companyAccount.balance = companyAccount.balance.minus(amount.abs()) // amount : 환전된 금액 rawToAmount
+        val target = if (amount > BigDecimal.ZERO) {
+            BalanceRef.companyAccount(accountId)
+        } else {
+            BalanceRef.bankExternal()
         }
 
-        // 계좌 정보 저장
-        accountRepository.save(companyAccount)
-
-        // 최종 잔액 반환 -> 나중에 dto로 변경
-        return companyAccount.balance
+        return moneyMovementService.transfer(
+            MoneyMovementCommand(
+                source = source,
+                target = target,
+                currencyId = companyAccount.currencyId,
+                amount = amount.abs(),
+                orderId = null,
+                reason = if (amount > BigDecimal.ZERO) {
+                    TransferReason.FX_BUY_BANK_TO_COMPANY
+                } else {
+                    TransferReason.FX_BUY_COMPANY_TO_BANK
+                }
+            )
+        ) ?: BigDecimal.ZERO
     }
 
     @Transactional
-    override fun companyToUser(accountId: Long, userId: Long, currencyId: Long, amount: BigDecimal, orderId: Long?): BigDecimal {
-        // 회사 계좌 조회 및 잠금
-        val companyAccount = accountRepository.findById(accountId)
-            .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
-
-        // 유저 지갑 조회 및 잠금
-        val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
-            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
-//        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
-//            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
-
-        if (companyAccount.currencyId != currencyId) {
-            throw UserException(ErrorCode.CURRENCY_MISMATCH)
-        }
-
-        // 회사 계좌 잔액 검증 및 차감
-        if (companyAccount.balance < amount) {
-            throw UserException(ErrorCode.INSUFFICIENT_ACCOUNT_BALANCE)
-        }
-
-        // 회사 계좌에서 유저 지갑으로 송금
-        companyAccount.balance = companyAccount.balance.minus(amount)
-
-        // 유저 지갑 가산
-        userWallet.balance = userWallet.balance.plus(amount)
-
-        // 저장
-        accountRepository.save(companyAccount)
-        walletRepository.save(userWallet)
-
-        val fxBuy = WalletFxCommand(
-            userId = userId,
-            walletId = userWallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
-            orderId = orderId, // 주문 ID는 필요에 따라 설정
-            currencyId = currencyId,
-            amount = amount,
-            balanceAfter = userWallet.balance,
-            type = WalletFxHistoryType.COMPANY_TO_USER
-        )
-
-        walletFxHistoryService.record(fxBuy)
-
-        return userWallet.balance
+    override fun companyToUser(
+        accountId: Long,
+        userId: Long,
+        currencyId: Long,
+        amount: BigDecimal,
+        orderId: Long?
+    ): BigDecimal {
+        return moneyMovementService.transfer(
+            MoneyMovementCommand(
+                source = BalanceRef.companyAccount(accountId),
+                target = BalanceRef.userWallet(userId),
+                currencyId = currencyId,
+                amount = amount,
+                orderId = orderId,
+                reason = TransferReason.FX_BUY_USER_SETTLEMENT
+            )
+        ) ?: BigDecimal.ZERO
     }
 
     @Transactional
-    override fun userToCompany(userId: Long, currencyId: Long, accountId: Long, amount: BigDecimal, orderId: Long?): BigDecimal {
-        // 유저 지갑 조회 및 잠금
-        val userWallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
-            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
-//        val userWallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
-//            ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
-
-        // 회사 목적 계좌 조회 및 잠금 + 통화 일치 체크
-        val companyAccount = accountRepository.findById(accountId)
-            .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
-//        val companyAccount = accountRepository.findByIdForUpdate(accountId)
-//            ?: throw UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND)
-
-        if (companyAccount.currencyId != currencyId) {
-            throw UserException(ErrorCode.CURRENCY_MISMATCH)
-        }
-
-        // 유저 지갑 잔액 검증 및 차감
-//        if (userWallet.balance < amount) {
-//            throw UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
-//        }
-        require(userWallet.balance >= amount) {
-            UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
-        }
-
-        // 유저 지갑에서 회사 계좌로 송금
-        userWallet.balance = userWallet.balance.minus(amount)
-
-        // 회사 계좌 가산
-        companyAccount.balance = companyAccount.balance.plus(amount)
-
-        // 저장
-        walletRepository.save(userWallet)
-        accountRepository.save(companyAccount)
-
-        val fxSell = WalletFxCommand(
-            userId = userId,
-            walletId = userWallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
-            orderId = orderId,
-            currencyId = currencyId,
-            amount = amount,
-            balanceAfter = userWallet.balance,
-            type = WalletFxHistoryType.USER_TO_COMPANY
-        )
-
-        walletFxHistoryService.record(fxSell)
-
-        return userWallet.balance
+    override fun userToCompany(
+        userId: Long,
+        currencyId: Long,
+        accountId: Long,
+        amount: BigDecimal,
+        orderId: Long?
+    ): BigDecimal {
+        return moneyMovementService.transfer(
+            MoneyMovementCommand(
+                source = BalanceRef.userWallet(userId),
+                target = BalanceRef.companyAccount(accountId),
+                currencyId = currencyId,
+                amount = amount,
+                orderId = orderId,
+                reason = TransferReason.FX_BUY_USER_PAYMENT
+            )
+        ) ?: BigDecimal.ZERO
     }
 }
