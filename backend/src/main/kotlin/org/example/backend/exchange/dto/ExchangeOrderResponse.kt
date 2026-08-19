@@ -1,6 +1,6 @@
 package org.example.backend.exchange.dto
 
-import org.example.backend.enums.OrderStatus
+import org.example.backend.enums.PublicOrderStatus
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -15,6 +15,6 @@ data class ExchangeOrderResponse(
     val toAmount: BigDecimal,
     val exchangeRate: BigDecimal,
 
-    val status: OrderStatus,
+    val status: PublicOrderStatus,
     val requestedAt: LocalDateTime
 )

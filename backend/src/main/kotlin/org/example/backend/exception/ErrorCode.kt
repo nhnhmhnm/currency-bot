@@ -28,4 +28,8 @@ enum class ErrorCode (
 
   // CURRENCY 400
   CURRENCY_MISMATCH(HttpStatus.BAD_REQUEST, 401, "currency mismatch"),
+
+  // EXCHANGE ORDER 500
+  INVALID_EXCHANGE_AMOUNT(HttpStatus.BAD_REQUEST, 501, "exchange amount must be positive"),
+  DAILY_EXCHANGE_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, 502, "daily exchange limit exceeded"),
 }

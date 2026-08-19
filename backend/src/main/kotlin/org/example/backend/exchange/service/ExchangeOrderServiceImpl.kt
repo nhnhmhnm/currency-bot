@@ -31,7 +31,8 @@ class ExchangeOrderServiceImpl(
     private val ledgerService: ExchangeLedgerService,
     private val currencyRepository: CurrencyRepository,
     private val walletService: WalletService,
-    private val accountRepository: AccountRepository
+    private val accountRepository: AccountRepository,
+    private val requestValidator: ExchangeOrderRequestValidator
 ) : ExchangeOrderService {
     private val log = LoggerFactory.getLogger(ExchangeOrderServiceImpl::class.java)
 
@@ -99,6 +100,7 @@ class ExchangeOrderServiceImpl(
 
         order.status = OrderStatus.PROCESSING
         order.processedAt = LocalDateTime.now()
+        requestValidator.validateForProcessing(order)
 
         return when (order.orderType) {
             OrderType.BUY -> executeBuyOrder(order, isArbitrage = false)
@@ -373,14 +375,25 @@ class ExchangeOrderServiceImpl(
             exchangeOrderRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)?.let { return it }
         }
 
-        return createOrder(
+        val fromCurrency = currencyRepository.findByCode(fromCurrencyCode.uppercase())
+        val toCurrency = currencyRepository.findByCode(toCurrencyCode.uppercase())
+        val usdEquivalentAmount = requestValidator.validate(
             userId = userId,
             orderType = orderType,
-            fromCurrencyCode = fromCurrencyCode,
-            toCurrencyCode = toCurrencyCode,
+            fromCurrency = fromCurrency,
+            toCurrency = toCurrency,
+            fromAmount = fromAmount
+        )
+
+        return saveOrder(
+            userId = userId,
+            orderType = orderType,
+            fromCurrency = fromCurrency,
+            toCurrency = toCurrency,
             fromAmount = fromAmount,
             status = OrderStatus.QUEUED,
-            idempotencyKey = idempotencyKey
+            idempotencyKey = idempotencyKey,
+            usdEquivalentAmount = usdEquivalentAmount
         )
     }
 
@@ -391,29 +404,31 @@ class ExchangeOrderServiceImpl(
         toCurrencyCode: String,
         fromAmount: BigDecimal
     ): ExchangeOrder {
-        return createOrder(
-            userId = userId,
-            orderType = orderType,
-            fromCurrencyCode = fromCurrencyCode,
-            toCurrencyCode = toCurrencyCode,
-            fromAmount = fromAmount,
-            status = OrderStatus.PROCESSING,
-            idempotencyKey = null
-        ).also { it.processedAt = LocalDateTime.now() }
-    }
-
-    private fun createOrder(
-        userId: Long,
-        orderType: OrderType,
-        fromCurrencyCode: String,
-        toCurrencyCode: String,
-        fromAmount: BigDecimal,
-        status: OrderStatus,
-        idempotencyKey: String?
-    ): ExchangeOrder {
         val fromCurrency = currencyRepository.findByCode(fromCurrencyCode.uppercase())
         val toCurrency = currencyRepository.findByCode(toCurrencyCode.uppercase())
 
+        return saveOrder(
+            userId = userId,
+            orderType = orderType,
+            fromCurrency = fromCurrency,
+            toCurrency = toCurrency,
+            fromAmount = fromAmount,
+            status = OrderStatus.PROCESSING,
+            idempotencyKey = null,
+            usdEquivalentAmount = null
+        ).also { it.processedAt = LocalDateTime.now() }
+    }
+
+    private fun saveOrder(
+        userId: Long,
+        orderType: OrderType,
+        fromCurrency: Currency,
+        toCurrency: Currency,
+        fromAmount: BigDecimal,
+        status: OrderStatus,
+        idempotencyKey: String?,
+        usdEquivalentAmount: BigDecimal?
+    ): ExchangeOrder {
         return exchangeOrderRepository.save(
             ExchangeOrder(
                 userId = userId,
@@ -425,7 +440,8 @@ class ExchangeOrderServiceImpl(
                 exchangeRate = BigDecimal.ZERO,
                 orderType = orderType,
                 status = status,
-                idempotencyKey = idempotencyKey
+                idempotencyKey = idempotencyKey,
+                usdEquivalentAmount = usdEquivalentAmount
             )
         )
     }

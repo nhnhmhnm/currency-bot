@@ -10,6 +10,7 @@ import io.mockk.verify
 import org.example.backend.enums.ExchangeType
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
+import org.example.backend.enums.PublicOrderStatus
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.repository.ExchangeOrderRepository
@@ -29,6 +30,7 @@ class ExchangeOrderServiceImplTest : FunSpec({
     val currencyRepository = mockk<CurrencyRepository>()
     val walletService = mockk<WalletService>()
     val accountRepository = mockk<AccountRepository>()
+    val requestValidator = mockk<ExchangeOrderRequestValidator>()
 
     val sut = ExchangeOrderServiceImpl(
         exchangeOrderRepository = exchangeOrderRepository,
@@ -37,7 +39,8 @@ class ExchangeOrderServiceImplTest : FunSpec({
         ledgerService = ledgerService,
         currencyRepository = currencyRepository,
         walletService = walletService,
-        accountRepository = accountRepository
+        accountRepository = accountRepository,
+        requestValidator = requestValidator
     )
 
     val krw = Currency(id = 1L, code = "KRW", name = "Korean Won", scale = 0, unit = BigDecimal.ONE)
@@ -115,7 +118,7 @@ class ExchangeOrderServiceImplTest : FunSpec({
 
         val res = sut.buyOrder(userId, currencyCode, fromAmount, false)
 
-        res.status shouldBe OrderStatus.SETTLED
+        res.status shouldBe PublicOrderStatus.COMPLETED
         res.toAmount shouldBe BigDecimal("76.92")
         verify(exactly = 2) { transactionService.record(any()) }
         verify(exactly = 1) { ledgerService.record(any()) }

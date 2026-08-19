@@ -8,6 +8,8 @@ import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.dto.ExchangeLedgerResponse
 import org.example.backend.exchange.dto.ExchangeOrderResponse
 import org.example.backend.exchange.dto.TransactionResponse
+import org.example.backend.enums.OrderStatus
+import org.example.backend.enums.PublicOrderStatus
 import org.example.backend.user.domain.DepositWithdrawal
 import org.example.backend.user.domain.WalletFxHistory
 import org.example.backend.user.dto.DepositWithdrawalResponse
@@ -32,9 +34,26 @@ fun ExchangeOrder.toDto() = ExchangeOrderResponse(
     fromAmount = this.fromAmount,
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
-    status = this.status,
+    status = this.status.toPublicStatus(),
     requestedAt = this.requestedAt!!
 )
+
+private fun OrderStatus.toPublicStatus(): PublicOrderStatus = when (this) {
+    OrderStatus.REQUESTED,
+    OrderStatus.QUEUED,
+    OrderStatus.PENDING -> PublicOrderStatus.ACCEPTED
+
+    OrderStatus.PROCESSING,
+    OrderStatus.COMPENSATING -> PublicOrderStatus.PROCESSING
+
+    OrderStatus.SETTLED,
+    OrderStatus.SUCCESS -> PublicOrderStatus.COMPLETED
+
+    OrderStatus.CANCELED,
+    OrderStatus.COMPENSATED -> PublicOrderStatus.CANCELED
+
+    OrderStatus.FAILED -> PublicOrderStatus.FAILED
+}
 
 fun ExchangeLedger.toDto() = ExchangeLedgerResponse(
     id = this.id!!,

@@ -35,6 +35,9 @@ class ExchangeOrder(
     @Column(name = "exchange_rate", nullable = false)
     var exchangeRate: BigDecimal,
 
+    @Column(name = "usd_equivalent_amount", precision = 19, scale = 6)
+    val usdEquivalentAmount: BigDecimal? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "order_type", nullable = false)
     var orderType: OrderType = OrderType.BUY,
