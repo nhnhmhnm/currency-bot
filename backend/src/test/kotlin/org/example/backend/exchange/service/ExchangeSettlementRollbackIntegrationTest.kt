@@ -4,6 +4,8 @@ import io.kotest.matchers.shouldBe
 import org.example.backend.enums.ExchangeType
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
+import org.example.backend.exception.ErrorCode
+import org.example.backend.exception.UserException
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.dto.ExchangeLedgerCommand
@@ -26,6 +28,10 @@ import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @SpringBootTest(
     properties = [
@@ -169,6 +175,82 @@ class ExchangeSettlementRollbackIntegrationTest {
         exchangeLedgerRepository.count() shouldBe 0L
         walletFxHistoryRepository.count() shouldBe 0L
         exchangeOrderRepository.findById(order.id!!).orElseThrow().status shouldBe OrderStatus.QUEUED
+    }
+
+    @Test
+    fun `concurrent orders never overdraw and every settlement has complete records`() {
+        val requests = runConcurrently(11) { index ->
+            exchangeOrderService.requestBuyOrder(
+                userId = USER_ID,
+                currencyCode = "USD",
+                fromAmount = ORDER_AMOUNT,
+                idempotencyKey = "balance-$index"
+            )
+        }
+
+        val acceptedOrders = requests.mapNotNull { it.getOrNull() }
+        val rejectedOrders = requests.mapNotNull { it.exceptionOrNull() }
+        acceptedOrders.size shouldBe 10
+        rejectedOrders.size shouldBe 1
+        (rejectedOrders.single() as UserException).errorCode shouldBe ErrorCode.INSUFFICIENT_WALLET_BALANCE.code
+
+        val settlements = runConcurrently(acceptedOrders.size) { index ->
+            exchangeOrderService.processQueuedOrder(acceptedOrders[index].id)
+        }
+        settlements.count { it.isSuccess } shouldBe 10
+
+        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe BigDecimal("0.00")
+        walletRepository.findByUserIdAndCurrencyId(USER_ID, USD_ID)!!.balance shouldBe BigDecimal("869.20")
+        exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 10
+        transactionRepository.count() shouldBe 20L
+        exchangeLedgerRepository.count() shouldBe 10L
+        walletFxHistoryRepository.count() shouldBe 30L
+    }
+
+    @Test
+    fun `concurrent requests cannot bypass the daily 4000 USD limit`() {
+        jdbcTemplate.update(
+            "update wallet set balance = ? where user_id = ? and currency_id = ?",
+            BigDecimal("10000000.00"),
+            USER_ID,
+            KRW_ID
+        )
+        val oneMillion = BigDecimal("1000000")
+
+        val requests = runConcurrently(6) { index ->
+            exchangeOrderService.requestBuyOrder(
+                userId = USER_ID,
+                currencyCode = "USD",
+                fromAmount = oneMillion,
+                idempotencyKey = "daily-limit-$index"
+            )
+        }
+
+        requests.count { it.isSuccess } shouldBe 5
+        val failure = requests.single { it.isFailure }.exceptionOrNull() as UserException
+        failure.errorCode shouldBe ErrorCode.DAILY_EXCHANGE_LIMIT_EXCEEDED.code
+        exchangeOrderRepository.count() shouldBe 5L
+    }
+
+    private fun <T> runConcurrently(taskCount: Int, action: (Int) -> T): List<Result<T>> {
+        val executor = Executors.newFixedThreadPool(taskCount)
+        val ready = CountDownLatch(taskCount)
+        val start = CountDownLatch(1)
+
+        return try {
+            val futures = (0 until taskCount).map { index ->
+                executor.submit(Callable {
+                    ready.countDown()
+                    check(start.await(5, TimeUnit.SECONDS)) { "concurrent test did not start in time" }
+                    runCatching { action(index) }
+                })
+            }
+            check(ready.await(5, TimeUnit.SECONDS)) { "workers were not ready in time" }
+            start.countDown()
+            futures.map { it.get(20, TimeUnit.SECONDS) }
+        } finally {
+            executor.shutdownNow()
+        }
     }
 
     private fun insertCompanyAccount(currencyId: Long, accountNum: String, balance: BigDecimal) {
