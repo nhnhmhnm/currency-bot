@@ -12,6 +12,7 @@ import org.example.backend.exchange.dto.ExchangeLedgerCommand
 import org.example.backend.exchange.dto.ExchangeLedgerResponse
 import org.example.backend.exchange.repository.ExchangeLedgerRepository
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exchange.repository.TransactionRepository
 import org.example.backend.finance.domain.Currency
 import org.example.backend.user.repository.AccountRepository
@@ -54,6 +55,9 @@ class ExchangeSettlementRollbackIntegrationTest {
     private lateinit var exchangeOrderRepository: ExchangeOrderRepository
 
     @Autowired
+    private lateinit var outboxEventRepository: OutboxEventRepository
+
+    @Autowired
     private lateinit var walletRepository: WalletRepository
 
     @Autowired
@@ -80,6 +84,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         walletFxHistoryRepository.deleteAll()
         exchangeLedgerRepository.deleteAll()
         transactionRepository.deleteAll()
+        outboxEventRepository.deleteAll()
         exchangeOrderRepository.deleteAll()
         walletRepository.deleteAll()
         accountRepository.deleteAll()
@@ -202,6 +207,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe BigDecimal("0.00")
         walletRepository.findByUserIdAndCurrencyId(USER_ID, USD_ID)!!.balance shouldBe BigDecimal("869.20")
         exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 10
+        outboxEventRepository.count() shouldBe 10L
         transactionRepository.count() shouldBe 20L
         exchangeLedgerRepository.count() shouldBe 10L
         walletFxHistoryRepository.count() shouldBe 30L
@@ -230,6 +236,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         val failure = requests.single { it.isFailure }.exceptionOrNull() as UserException
         failure.errorCode shouldBe ErrorCode.DAILY_EXCHANGE_LIMIT_EXCEEDED.code
         exchangeOrderRepository.count() shouldBe 5L
+        outboxEventRepository.count() shouldBe 5L
     }
 
     private fun <T> runConcurrently(taskCount: Int, action: (Int) -> T): List<Result<T>> {

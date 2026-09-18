@@ -5,6 +5,7 @@ import org.example.backend.exchange.dto.ExchangeOrderResponse
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
+import java.time.Duration
 
 @Service
 class OrderWorker(
@@ -15,29 +16,53 @@ class OrderWorker(
 
     @Scheduled(fixedDelay = 500)
     fun processQueue() {
-        var pulled = 0
-        var orderId = queue.dequeue()
+        recoverExpiredMessages()
 
-        while (orderId != null) {
+        var pulled = 0
+        var message = queue.claim()
+
+        while (message != null) {
             try {
-                val res = exchangeOrderService.processQueuedOrder(orderId)
+                val res = exchangeOrderService.processQueuedOrder(message.orderId)
                 logOrder(res)
+                queue.acknowledge(message)
             } catch (e: Exception) {
-                log.error("order processing failed: orderId={}", orderId, e)
-                exchangeOrderService.markFailed(
-                    orderId = orderId,
-                    stage = "ORDER_WORKER",
-                    reason = e.message ?: e::class.simpleName.orEmpty()
+                val attempts = queue.reject(message, MAX_ATTEMPTS)
+                log.error(
+                    "order processing failed: orderId={}, attempt={}/{}",
+                    message.orderId,
+                    attempts,
+                    MAX_ATTEMPTS,
+                    e
                 )
+                if (attempts >= MAX_ATTEMPTS) {
+                    markFailed(message.orderId, e.message ?: e::class.simpleName.orEmpty())
+                } else {
+                    return
+                }
             }
 
             pulled++
-            orderId = queue.dequeue()
+            message = queue.claim()
         }
 
         if (pulled == 0) {
             log.debug("queue empty")
         }
+    }
+
+    private fun recoverExpiredMessages() {
+        queue.recoverExpired(MAX_ATTEMPTS, LEASE_TIMEOUT).forEach { message ->
+            markFailed(message.orderId, "worker lease expired after $MAX_ATTEMPTS attempts")
+        }
+    }
+
+    private fun markFailed(orderId: Long, reason: String) {
+        exchangeOrderService.markFailed(
+            orderId = orderId,
+            stage = "ORDER_WORKER",
+            reason = reason
+        )
     }
 
     private fun logOrder(res: ExchangeOrderResponse) {
@@ -51,5 +76,10 @@ class OrderWorker(
             res.fromAmount,
             res.toAmount
         )
+    }
+
+    companion object {
+        private const val MAX_ATTEMPTS = 3
+        private val LEASE_TIMEOUT: Duration = Duration.ofSeconds(30)
     }
 }

@@ -14,6 +14,7 @@ import org.example.backend.enums.PublicOrderStatus
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.finance.domain.Currency
@@ -33,6 +34,7 @@ class ExchangeOrderServiceImplTest : FunSpec({
     val walletService = mockk<WalletService>()
     val accountRepository = mockk<AccountRepository>()
     val requestValidator = mockk<ExchangeOrderRequestValidator>()
+    val outboxEventRepository = mockk<OutboxEventRepository>(relaxed = true)
 
     val sut = ExchangeOrderServiceImpl(
         exchangeOrderRepository = exchangeOrderRepository,
@@ -42,7 +44,8 @@ class ExchangeOrderServiceImplTest : FunSpec({
         currencyRepository = currencyRepository,
         walletService = walletService,
         accountRepository = accountRepository,
-        requestValidator = requestValidator
+        requestValidator = requestValidator,
+        outboxEventRepository = outboxEventRepository
     )
 
     val krw = Currency(id = 1L, code = "KRW", name = "Korean Won", scale = 0, unit = BigDecimal.ONE)
@@ -213,5 +216,26 @@ class ExchangeOrderServiceImplTest : FunSpec({
 
         exception.errorCode shouldBe ErrorCode.IDEMPOTENCY_KEY_CONFLICT.code
         verify(exactly = 0) { exchangeOrderRepository.save(any()) }
+    }
+
+    test("markFailed does not overwrite an already settled order") {
+        val settledOrder = ExchangeOrder(
+            id = 30L,
+            userId = 10L,
+            bankId = 1L,
+            fromCurrencyId = krw.id,
+            toCurrencyId = usd.id,
+            fromAmount = BigDecimal("100000"),
+            toAmount = BigDecimal("76.92"),
+            exchangeRate = BigDecimal("1300"),
+            orderType = OrderType.BUY,
+            status = OrderStatus.SETTLED
+        )
+        every { exchangeOrderRepository.findByIdForUpdate(30L) } returns settledOrder
+
+        sut.markFailed(30L, "ORDER_WORKER", "lease expired")
+
+        settledOrder.status shouldBe OrderStatus.SETTLED
+        settledOrder.failureReason shouldBe null
     }
 })

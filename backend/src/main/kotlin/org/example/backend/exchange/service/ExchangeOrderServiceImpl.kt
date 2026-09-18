@@ -10,6 +10,9 @@ import org.example.backend.exchange.dto.ExchangeLedgerCommand
 import org.example.backend.exchange.dto.ExchangeOrderResponse
 import org.example.backend.exchange.dto.TransactionCommand
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.OutboxEventRepository
+import org.example.backend.exchange.domain.OutboxEvent
+import org.example.backend.enums.OutboxEventType
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.user.domain.Account
@@ -32,11 +35,19 @@ class ExchangeOrderServiceImpl(
     private val currencyRepository: CurrencyRepository,
     private val walletService: WalletService,
     private val accountRepository: AccountRepository,
-    private val requestValidator: ExchangeOrderRequestValidator
+    private val requestValidator: ExchangeOrderRequestValidator,
+    private val outboxEventRepository: OutboxEventRepository
 ) : ExchangeOrderService {
     private val log = LoggerFactory.getLogger(ExchangeOrderServiceImpl::class.java)
 
     private val commission = BigDecimal("0.00003")
+    private val terminalStatuses = setOf(
+        OrderStatus.SETTLED,
+        OrderStatus.SUCCESS,
+        OrderStatus.FAILED,
+        OrderStatus.CANCELED,
+        OrderStatus.COMPENSATED
+    )
 
     @Transactional
     override fun requestBuyOrder(
@@ -94,7 +105,7 @@ class ExchangeOrderServiceImpl(
         val order = exchangeOrderRepository.findByIdForUpdate(orderId)
             ?: error("Exchange order not found: $orderId")
 
-        if (order.status == OrderStatus.SETTLED || order.status == OrderStatus.SUCCESS) {
+        if (order.status in terminalStatuses) {
             return order.toDto()
         }
 
@@ -111,7 +122,9 @@ class ExchangeOrderServiceImpl(
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     override fun markFailed(orderId: Long, stage: String, reason: String) {
-        val order = exchangeOrderRepository.findById(orderId).orElse(null) ?: return
+        val order = exchangeOrderRepository.findByIdForUpdate(orderId) ?: return
+        if (order.status in terminalStatuses) return
+
         order.status = OrderStatus.FAILED
         order.failureStage = stage
         order.failureReason = reason.take(255)
@@ -453,7 +466,7 @@ class ExchangeOrderServiceImpl(
         idempotencyKey: String?,
         usdEquivalentAmount: BigDecimal?
     ): ExchangeOrder {
-        return exchangeOrderRepository.save(
+        val order = exchangeOrderRepository.save(
             ExchangeOrder(
                 userId = userId,
                 bankId = 0L,
@@ -468,6 +481,17 @@ class ExchangeOrderServiceImpl(
                 usdEquivalentAmount = usdEquivalentAmount
             )
         )
+
+        if (status == OrderStatus.QUEUED) {
+            outboxEventRepository.save(
+                OutboxEvent(
+                    aggregateId = order.id!!,
+                    eventType = OutboxEventType.ORDER_ACCEPTED
+                )
+            )
+        }
+
+        return order
     }
 
     private fun getCurrency(currencyId: Long): Currency {

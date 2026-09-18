@@ -1,7 +1,6 @@
 package org.example.backend.exchange.controller
 
 import org.example.backend.auth.dto.UserPrincipal
-import org.example.backend.common.util.RedisOrderQueue
 import org.example.backend.exchange.service.ExchangeOrderService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -16,7 +15,6 @@ import java.math.BigDecimal
 @RestController
 @RequestMapping("/api/exchange")
 class ExchangeOrderController(
-    private val redisOrderQueue: RedisOrderQueue,
     private val exchangeOrderService: ExchangeOrderService
 ) {
     @PostMapping("/buy")
@@ -32,8 +30,6 @@ class ExchangeOrderController(
             fromAmount = fromAmount,
             idempotencyKey = idempotencyKey
         )
-        redisOrderQueue.enqueue(order.id)
-
         return ResponseEntity
             .status(HttpStatus.ACCEPTED)
             .body("BUY order accepted. orderId=${order.id}")
@@ -52,8 +48,6 @@ class ExchangeOrderController(
             fromAmount = fromAmount,
             idempotencyKey = idempotencyKey
         )
-        redisOrderQueue.enqueue(order.id)
-
         return ResponseEntity
             .status(HttpStatus.ACCEPTED)
             .body("SELL order accepted. orderId=${order.id}")
@@ -72,8 +66,6 @@ class ExchangeOrderController(
             fromAmount = fromAmount,
             idempotencyKey = idempotencyKey
         )
-        redisOrderQueue.enqueue(order.id)
-
         return ResponseEntity
             .status(HttpStatus.ACCEPTED)
             .body("ARBITRAGE order accepted. orderId=${order.id}")
