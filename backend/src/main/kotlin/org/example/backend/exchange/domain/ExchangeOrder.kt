@@ -8,7 +8,15 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "exchange_order")
+@Table(
+    name = "exchange_order",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_exchange_order_user_idempotency_key",
+            columnNames = ["user_id", "idempotency_key"]
+        )
+    ]
+)
 class ExchangeOrder(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -46,7 +54,7 @@ class ExchangeOrder(
     @Column(name = "status", nullable = false)
     var status: OrderStatus,
 
-    @Column(name = "idempotency_key")
+    @Column(name = "idempotency_key", length = 100)
     val idempotencyKey: String? = null,
 
     @Column(name = "failure_stage")

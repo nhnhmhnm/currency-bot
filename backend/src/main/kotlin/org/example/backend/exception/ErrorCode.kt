@@ -32,4 +32,5 @@ enum class ErrorCode (
   // EXCHANGE ORDER 500
   INVALID_EXCHANGE_AMOUNT(HttpStatus.BAD_REQUEST, 501, "exchange amount must be positive"),
   DAILY_EXCHANGE_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, 502, "daily exchange limit exceeded"),
+  IDEMPOTENCY_KEY_CONFLICT(HttpStatus.CONFLICT, 503, "idempotency key was already used for another request"),
 }

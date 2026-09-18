@@ -35,8 +35,26 @@ class ExchangeOrderRequestValidator(
             throw UserException(ErrorCode.INVALID_EXCHANGE_AMOUNT)
         }
 
+        lockUser(userId)
+
+        return validateAfterUserLock(userId, orderType, fromCurrency, toCurrency, fromAmount)
+    }
+
+    fun lockUser(userId: Long) {
         userRepository.findByIdForUpdate(userId)
             ?: throw UserException(ErrorCode.USER_NOT_FOUND)
+    }
+
+    fun validateAfterUserLock(
+        userId: Long,
+        orderType: OrderType,
+        fromCurrency: Currency,
+        toCurrency: Currency,
+        fromAmount: BigDecimal
+    ): BigDecimal {
+        if (fromAmount <= BigDecimal.ZERO) {
+            throw UserException(ErrorCode.INVALID_EXCHANGE_AMOUNT)
+        }
 
         validateAvailableBalance(userId, fromCurrency.id, fromAmount)
 

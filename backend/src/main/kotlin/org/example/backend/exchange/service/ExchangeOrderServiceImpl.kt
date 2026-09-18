@@ -371,13 +371,18 @@ class ExchangeOrderServiceImpl(
         fromAmount: BigDecimal,
         idempotencyKey: String?
     ): ExchangeOrder {
-        if (!idempotencyKey.isNullOrBlank()) {
-            exchangeOrderRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)?.let { return it }
-        }
-
         val fromCurrency = currencyRepository.findByCode(fromCurrencyCode.uppercase())
         val toCurrency = currencyRepository.findByCode(toCurrencyCode.uppercase())
-        val usdEquivalentAmount = requestValidator.validate(
+        requestValidator.lockUser(userId)
+
+        if (!idempotencyKey.isNullOrBlank()) {
+            exchangeOrderRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)?.let { existingOrder ->
+                validateIdempotentRequest(existingOrder, orderType, fromCurrency, toCurrency, fromAmount)
+                return existingOrder
+            }
+        }
+
+        val usdEquivalentAmount = requestValidator.validateAfterUserLock(
             userId = userId,
             orderType = orderType,
             fromCurrency = fromCurrency,
@@ -395,6 +400,25 @@ class ExchangeOrderServiceImpl(
             idempotencyKey = idempotencyKey,
             usdEquivalentAmount = usdEquivalentAmount
         )
+    }
+
+    private fun validateIdempotentRequest(
+        existingOrder: ExchangeOrder,
+        orderType: OrderType,
+        fromCurrency: Currency,
+        toCurrency: Currency,
+        fromAmount: BigDecimal
+    ) {
+        val sameRequest = existingOrder.orderType == orderType &&
+            existingOrder.fromCurrencyId == fromCurrency.id &&
+            existingOrder.toCurrencyId == toCurrency.id &&
+            existingOrder.fromAmount.compareTo(fromAmount) == 0
+
+        if (!sameRequest) {
+            throw org.example.backend.exception.UserException(
+                org.example.backend.exception.ErrorCode.IDEMPOTENCY_KEY_CONFLICT
+            )
+        }
     }
 
     private fun createProcessingOrder(

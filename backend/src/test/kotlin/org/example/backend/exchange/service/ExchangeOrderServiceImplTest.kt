@@ -14,6 +14,8 @@ import org.example.backend.enums.PublicOrderStatus
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exception.ErrorCode
+import org.example.backend.exception.UserException
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.user.domain.Account
@@ -156,5 +158,60 @@ class ExchangeOrderServiceImplTest : FunSpec({
         shouldThrow<IllegalArgumentException> {
             sut.buyOrder(userId, currencyCode, BigDecimal("1000"), false)
         }
+    }
+
+    test("requestBuyOrder returns the existing order for the same idempotency key and payload") {
+        val existingOrder = ExchangeOrder(
+            id = 20L,
+            userId = 10L,
+            bankId = 0L,
+            fromCurrencyId = krw.id,
+            toCurrencyId = usd.id,
+            fromAmount = BigDecimal("100000"),
+            toAmount = BigDecimal.ZERO,
+            exchangeRate = BigDecimal.ZERO,
+            orderType = OrderType.BUY,
+            status = OrderStatus.QUEUED,
+            idempotencyKey = "same-key"
+        )
+
+        every { currencyRepository.findByCode("KRW") } returns krw
+        every { currencyRepository.findByCode("USD") } returns usd
+        every { requestValidator.lockUser(10L) } returns Unit
+        every { exchangeOrderRepository.findByUserIdAndIdempotencyKey(10L, "same-key") } returns existingOrder
+
+        val response = sut.requestBuyOrder(10L, "USD", BigDecimal("100000.00"), "same-key")
+
+        response.id shouldBe 20L
+        verify(exactly = 0) { exchangeOrderRepository.save(any()) }
+        verify(exactly = 0) { requestValidator.validateAfterUserLock(any(), any(), any(), any(), any()) }
+    }
+
+    test("requestBuyOrder rejects a reused idempotency key with a different payload") {
+        val existingOrder = ExchangeOrder(
+            id = 21L,
+            userId = 10L,
+            bankId = 0L,
+            fromCurrencyId = krw.id,
+            toCurrencyId = usd.id,
+            fromAmount = BigDecimal("100000"),
+            toAmount = BigDecimal.ZERO,
+            exchangeRate = BigDecimal.ZERO,
+            orderType = OrderType.BUY,
+            status = OrderStatus.QUEUED,
+            idempotencyKey = "reused-key"
+        )
+
+        every { currencyRepository.findByCode("KRW") } returns krw
+        every { currencyRepository.findByCode("USD") } returns usd
+        every { requestValidator.lockUser(10L) } returns Unit
+        every { exchangeOrderRepository.findByUserIdAndIdempotencyKey(10L, "reused-key") } returns existingOrder
+
+        val exception = shouldThrow<UserException> {
+            sut.requestBuyOrder(10L, "USD", BigDecimal("200000"), "reused-key")
+        }
+
+        exception.errorCode shouldBe ErrorCode.IDEMPOTENCY_KEY_CONFLICT.code
+        verify(exactly = 0) { exchangeOrderRepository.save(any()) }
     }
 })
