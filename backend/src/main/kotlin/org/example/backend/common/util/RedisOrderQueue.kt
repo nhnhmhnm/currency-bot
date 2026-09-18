@@ -14,7 +14,7 @@ class RedisOrderQueue(
         val token = encode(eventId, orderId)
         return redisTemplate.execute(
             ENQUEUE_SCRIPT,
-            listOf(PENDING_KEY, DEDUPLICATION_KEY),
+            listOf(PENDING_KEY, deduplicationKey(eventId)),
             token
         ) == 1L
     }
@@ -66,6 +66,8 @@ class RedisOrderQueue(
 
     private fun encode(eventId: Long, orderId: Long): String = "$eventId:$orderId"
 
+    private fun deduplicationKey(eventId: Long): String = "$DEDUPLICATION_PREFIX:$eventId"
+
     private fun decode(token: String): OrderQueueMessage? {
         val parts = token.split(':', limit = 2)
         if (parts.size != 2 || parts[0].toLongOrNull() == null) return null
@@ -78,17 +80,18 @@ class RedisOrderQueue(
         private const val PROCESSING_KEY = "order:queue:processing"
         private const val LEASE_KEY = "order:queue:lease"
         private const val ATTEMPT_KEY = "order:queue:attempt"
-        private const val DEDUPLICATION_KEY = "order:queue:published"
+        private const val DEDUPLICATION_PREFIX = "order:queue:published"
+        private const val DEDUPLICATION_TTL_SECONDS = 604800
 
         private val ENQUEUE_SCRIPT = DefaultRedisScript(
             """
-            if redis.call('SADD', KEYS[2], ARGV[1]) == 1 then
+            if redis.call('SET', KEYS[2], '1', 'NX', 'EX', $DEDUPLICATION_TTL_SECONDS) then
                 redis.call('RPUSH', KEYS[1], ARGV[1])
                 return 1
             end
             return 0
             """.trimIndent(),
-            Long::class.java
+            Long::class.javaObjectType
         )
         private val CLAIM_SCRIPT = DefaultRedisScript(
             """
@@ -108,7 +111,7 @@ class RedisOrderQueue(
             redis.call('HDEL', KEYS[3], ARGV[1])
             return 1
             """.trimIndent(),
-            Long::class.java
+            Long::class.javaObjectType
         )
         private val REJECT_SCRIPT = DefaultRedisScript(
             """
@@ -122,7 +125,7 @@ class RedisOrderQueue(
             end
             return attempts
             """.trimIndent(),
-            Long::class.java
+            Long::class.javaObjectType
         )
     }
 }
