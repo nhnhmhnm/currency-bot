@@ -42,7 +42,15 @@ class ExchangeServiceImpl(
 
     override fun calculateExchange(fromCurrency: Currency, toCurrency: Currency,
                                    exchangeRate: BigDecimal, fromAmount: BigDecimal): Pair<BigDecimal, BigDecimal> {
+        require(fromAmount > BigDecimal.ZERO) { "exchange amount must be positive" }
+        require(exchangeRate > BigDecimal.ZERO) { "exchange rate must be positive" }
+        require(fromCurrency.unit > BigDecimal.ZERO && toCurrency.unit > BigDecimal.ZERO) {
+            "currency unit must be positive"
+        }
+
         val isKrwToFx = fromCurrency.code.equals("KRW", true)
+        val isFxToKrw = toCurrency.code.equals("KRW", true)
+        require(isKrwToFx.xor(isFxToKrw)) { "only KRW-to-FX and FX-to-KRW exchanges are supported" }
 
         // 환율을 '1 단위(to/from 통화) 기준'으로 정규화
         val ratePerOne = when {
@@ -50,7 +58,7 @@ class ExchangeServiceImpl(
             isKrwToFx -> exchangeRate.divide(toCurrency.unit, 10, RoundingMode.DOWN)
 
             // 외화 → KRW(SELL): fromCurrency.unit으로 나눠 1단위 외화 기준 KRW 가격으로 맞춤
-            toCurrency.code.equals("KRW", true) -> exchangeRate.divide(fromCurrency.unit, 10, RoundingMode.DOWN)
+            isFxToKrw -> exchangeRate.divide(fromCurrency.unit, 10, RoundingMode.DOWN)
 
             else -> throw IllegalArgumentException("지원하지 않는 환전 방향입니다")
         }

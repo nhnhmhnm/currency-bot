@@ -23,7 +23,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.LocalDateTime
 
 @Service
@@ -40,7 +39,6 @@ class ExchangeOrderServiceImpl(
 ) : ExchangeOrderService {
     private val log = LoggerFactory.getLogger(ExchangeOrderServiceImpl::class.java)
 
-    private val commission = BigDecimal("0.00003")
     private val terminalStatuses = setOf(
         OrderStatus.SETTLED,
         OrderStatus.SUCCESS,
@@ -220,11 +218,11 @@ class ExchangeOrderServiceImpl(
         order.bankId = bestRate.bankId
         order.exchangeRate = bestRate.bestRate
 
-        val commissionAmount = if (isArbitrage) {
-            BigDecimal.ZERO
-        } else {
-            order.fromAmount.multiply(commission).setScale(0, RoundingMode.UP)
-        }
+        val commissionAmount = ExchangeCommissionPolicy.calculate(
+            baseAmount = order.fromAmount,
+            scale = fromCurrency.scale,
+            isArbitrage = isArbitrage
+        )
         val exchangeAmount = order.fromAmount.minus(commissionAmount)
         val (toAmount, bankProfit) = exchangeService.calculateExchange(
             fromCurrency = fromCurrency,
@@ -281,7 +279,7 @@ class ExchangeOrderServiceImpl(
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
                 commissionCurrencyId = fromCurrency.id,
-                commissionRate = commission,
+                commissionRate = ExchangeCommissionPolicy.RATE,
                 commissionAmount = commissionAmount,
                 type = ExchangeLedgerType.FX_BUY
             )
@@ -315,11 +313,11 @@ class ExchangeOrderServiceImpl(
             exchangeRate = bestRate.bestRate,
             fromAmount = order.fromAmount
         )
-        val commissionAmount = if (isArbitrage) {
-            BigDecimal.ZERO
-        } else {
-            rawToAmount.multiply(commission).setScale(0, RoundingMode.UP)
-        }
+        val commissionAmount = ExchangeCommissionPolicy.calculate(
+            baseAmount = rawToAmount,
+            scale = toCurrency.scale,
+            isArbitrage = isArbitrage
+        )
         val toAmount = rawToAmount.minus(commissionAmount)
 
         order.toAmount = toAmount
@@ -364,7 +362,7 @@ class ExchangeOrderServiceImpl(
                 toAmount = toAmount,
                 exchangeRate = bestRate.bestRate,
                 commissionCurrencyId = toCurrency.id,
-                commissionRate = commission,
+                commissionRate = ExchangeCommissionPolicy.RATE,
                 commissionAmount = commissionAmount,
                 type = ExchangeLedgerType.FX_SELL
             )

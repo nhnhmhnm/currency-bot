@@ -1,6 +1,7 @@
 package org.example.backend.exchange.service
 
-import io.kotest.core.spec.style.BehaviorSpec
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import org.example.backend.finance.domain.Currency
@@ -8,84 +9,75 @@ import org.example.backend.finance.repository.ExchangeRateJdbcRepository
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-class ExchangeServiceImplTest : BehaviorSpec({
+class ExchangeServiceImplTest : FunSpec({
     val repository = mockk<ExchangeRateJdbcRepository>(relaxed = true)
     val service = ExchangeServiceImpl(repository)
+    val krw = Currency(id = 1L, code = "KRW", name = "Korean Won", scale = 0, unit = BigDecimal.ONE)
+    val usd = Currency(id = 2L, code = "USD", name = "US Dollar", scale = 2, unit = BigDecimal.ONE)
+    val jpy = Currency(id = 3L, code = "JPY", name = "Japanese Yen", scale = 0, unit = BigDecimal("100"))
+    val usdRate = BigDecimal("1438")
+    val jpyRate = BigDecimal("943")
 
-    val krw = Currency(id = 1L, code = "KRW", name = "대한민국 원", scale = 0, unit = BigDecimal("1"))
-    val usd = Currency(id = 2L, code = "USD", name = "미국 달러", scale = 2, unit = BigDecimal("1"))
-    val jpy = Currency(id = 3L, code = "JPY", name = "일본 엔",   scale = 0, unit = BigDecimal("100"))
-
-    // 1 USD = 1438 KRW
-    Given("100,000 KRW를 달러로 환전하는 경우") {
-        val ratePerUsd = BigDecimal("1438")     // DB: 1달러 기준
-        val from = BigDecimal("100000")
-
-        When("calculateExchange를 호출하면") {
-            val (toAmount, profit) = service.calculateExchange(
-                fromCurrency = krw, toCurrency = usd,
-                exchangeRate = ratePerUsd, fromAmount = from
-            )
-
-            Then("달러 = 69.54, 차익 0.0010292072 USD이 반환된다.") {
-                val raw = from.divide(ratePerUsd, 10, RoundingMode.DOWN) // 69.5410292072
-                toAmount shouldBe raw.setScale(2, RoundingMode.DOWN) // 69.54
-                profit shouldBe raw.subtract(toAmount) // 0.0010292072
-            }
-        }
-    }
-    Given("80 USD를 원화로 환전하는 경우") {
-        val ratePerUsd = BigDecimal("1438")
-        val from = BigDecimal("80")
-
-        When("calculateExchange를 호출하면") {
-            val (toAmount, profit) = service.calculateExchange(
-                fromCurrency = usd, toCurrency = krw,
-                exchangeRate = ratePerUsd, fromAmount = from
-            )
-
-            Then("원화 = 115040, 차익 0 USD이 반환된다.") {
-                toAmount shouldBe BigDecimal("115040")
-                profit shouldBe BigDecimal.ZERO
-            }
-        }
+    test("converts one USD using a unit of one") {
+        service.calculateExchange(usd, krw, usdRate, BigDecimal.ONE) shouldBe
+            (BigDecimal("1438") to BigDecimal.ZERO)
     }
 
-    // 100 JPY = 943 KRW
-    Given("100,000 KRW를 엔화로 환전하는 경우") {
-        val ratePer100Jpy = BigDecimal("943")   // DB: 100엔 기준
-        val from = BigDecimal("100000")
+    test("converts 1438 KRW to exactly one USD") {
+        service.calculateExchange(krw, usd, usdRate, BigDecimal("1438")) shouldBe
+            (BigDecimal("1.00") to BigDecimal.ZERO)
+    }
 
-        When("calculateExchange를 호출하면") {
-            val (toAmount, profit) = service.calculateExchange(
-                fromCurrency = krw, toCurrency = jpy,
-                exchangeRate = ratePer100Jpy, fromAmount = from
-            )
+    test("converts 100 JPY using the quoted unit of one hundred") {
+        service.calculateExchange(jpy, krw, jpyRate, BigDecimal("100")) shouldBe
+            (BigDecimal("943") to BigDecimal.ZERO)
+    }
 
-            Then("엔화 = 10604, 차익 0.4538706256 JPY이 반환된다.") {
-                val ratePerOne = ratePer100Jpy.divide(BigDecimal("100"), 10, RoundingMode.DOWN) // 9.43
-                val raw = from.divide(ratePerOne, 10, RoundingMode.DOWN) // 10604.4538706256
-                toAmount shouldBe raw.setScale(0, RoundingMode.DOWN) // 10604
-                profit shouldBe raw.subtract(toAmount) // 0.4538706256
-            }
+    test("converts one JPY by reversing the one hundred JPY quote") {
+        service.calculateExchange(jpy, krw, jpyRate, BigDecimal.ONE) shouldBe
+            (BigDecimal("9") to BigDecimal("0.43"))
+    }
+
+    test("rounds a sub-cent USD result down to the currency scale") {
+        val (amount, remainder) = service.calculateExchange(krw, usd, usdRate, BigDecimal.ONE)
+
+        amount shouldBe BigDecimal("0.00")
+        remainder shouldBe BigDecimal("0.0006954102")
+    }
+
+    test("round trip never creates value through rounding") {
+        val initialKrw = BigDecimal("100000")
+        val (usdAmount) = service.calculateExchange(krw, usd, usdRate, initialKrw)
+        val (returnedKrw) = service.calculateExchange(usd, krw, usdRate, usdAmount)
+
+        returnedKrw shouldBe BigDecimal("99998")
+        (initialKrw - returnedKrw) shouldBe BigDecimal("2")
+    }
+
+    test("keeps deterministic precision for a very large amount") {
+        val input = BigDecimal("999999999999999.99")
+        val expectedRaw = input.divide(usdRate, 10, RoundingMode.DOWN)
+        val (amount, remainder) = service.calculateExchange(krw, usd, usdRate, input)
+
+        amount shouldBe expectedRaw.setScale(2, RoundingMode.DOWN)
+        remainder shouldBe expectedRaw.subtract(amount).stripTrailingZeros()
+    }
+
+    test("rejects zero and negative amounts") {
+        shouldThrow<IllegalArgumentException> {
+            service.calculateExchange(krw, usd, usdRate, BigDecimal.ZERO)
+        }
+        shouldThrow<IllegalArgumentException> {
+            service.calculateExchange(krw, usd, usdRate, BigDecimal("-1"))
         }
     }
-    Given("10,000 JPY를 원화로 환전하는 경우") {
-        val ratePer100Jpy = BigDecimal("943")
-        val from = BigDecimal("10000")
 
-        When("calculateExchange를 호출하면") {
-            val (toAmount, profit) = service.calculateExchange(
-                fromCurrency = jpy, toCurrency = krw,
-                exchangeRate = ratePer100Jpy, fromAmount = from
-            )
-
-            Then("원화 = 94300, 차익 0 JPY이 반환된다.") {
-                val ratePerOne = ratePer100Jpy.divide(BigDecimal("100"), 10, RoundingMode.DOWN) // 9.43
-                val raw = from.multiply(ratePerOne) // 94300.0000000000
-                toAmount shouldBe raw.setScale(0, RoundingMode.DOWN) // 94300
-                profit shouldBe BigDecimal.ZERO
-            }
+    test("rejects a zero rate and unsupported cross currency direction") {
+        shouldThrow<IllegalArgumentException> {
+            service.calculateExchange(krw, usd, BigDecimal.ZERO, BigDecimal.ONE)
+        }
+        shouldThrow<IllegalArgumentException> {
+            service.calculateExchange(usd, jpy, usdRate, BigDecimal.ONE)
         }
     }
 })
