@@ -131,14 +131,18 @@ class ExchangeOrderRequestValidator(
         return krwAmount.divide(usdRatePerOne, USD_SCALE, RoundingMode.UP)
     }
 
-    private fun validateDailyLimit(userId: Long, requestedUsdAmount: BigDecimal) {
+    fun dailyUsedUsd(userId: Long): BigDecimal {
         val today = LocalDate.now(SEOUL_ZONE)
-        val usedUsdAmount = exchangeOrderRepository.sumDailyUsdEquivalentAmount(
+        return exchangeOrderRepository.sumDailyUsdEquivalentAmount(
             userId = userId,
             startAt = today.atStartOfDay(),
             endAt = today.plusDays(1).atStartOfDay(),
             statuses = DAILY_LIMIT_STATUSES
         )
+    }
+
+    private fun validateDailyLimit(userId: Long, requestedUsdAmount: BigDecimal) {
+        val usedUsdAmount = dailyUsedUsd(userId)
 
         if (usedUsdAmount.add(requestedUsdAmount) > DAILY_LIMIT_USD) {
             throw UserException(

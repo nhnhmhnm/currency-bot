@@ -23,6 +23,7 @@ class SecurityConfig(
             .csrf { it.disable() } // jwt 사용 시 CSRF 불 필요
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
+                it.requestMatchers(HttpMethod.GET, "/api/exchange/rates").permitAll()
                 // 비인증 허용 경로
                 it.requestMatchers(
                     HttpMethod.POST,
