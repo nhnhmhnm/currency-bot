@@ -32,8 +32,11 @@ test('dashboard renders chart, local visual assets and responsive layout', async
   await expect(page.locator('.recharts-line-curve')).toHaveCount(8);
   await baseRate.check();
   await expect(page.locator('.recharts-line-curve')).toHaveCount(12);
-  expect(await page.locator('.recharts-line-curve[stroke-dasharray="7 4"]').count()).toBe(4);
-  expect(await page.locator('.recharts-line-curve[stroke-dasharray="2 4"]').count()).toBe(4);
+  expect(await page.locator('.recharts-line-curve[stroke-dasharray="8 4"]').count()).toBe(3);
+  expect(await page.locator('.recharts-line-curve[stroke-dasharray="2 4"]').count()).toBe(3);
+  expect(await page.locator('.recharts-line-curve[stroke="var(--buy)"]').count()).toBe(4);
+  expect(await page.locator('.recharts-line-curve[stroke="var(--sell)"]').count()).toBe(4);
+  expect(await page.locator('.recharts-line-curve[stroke="var(--base)"]').count()).toBe(4);
   await buyRate.uncheck();
   await sellRate.uncheck();
   await baseRate.uncheck();
@@ -47,6 +50,40 @@ test('dashboard renders chart, local visual assets and responsive layout', async
   await expect(page.locator('.amount-input')).toContainText('JPY');
   await expect(page.locator('.receive-line')).toContainText('KRW');
   expect(errors).toEqual([]);
+});
+
+test('system theme switches surfaces and keeps rate colors distinct', async ({ page }, testInfo) => {
+  await dashboard(page, { authenticated: true });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/');
+  await expect(page.locator('.recharts-line-curve')).toHaveCount(4);
+  const colors = async () => page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    return ['--background', '--surface', '--purple', '--buy', '--sell', '--base'].map(name => root.getPropertyValue(name).trim());
+  });
+  const light = await colors();
+  await page.screenshot({ path: testInfo.outputPath('light.png'), fullPage: true });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const dark = await colors();
+  await expect(page.locator('.confirmation')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('dark.png'), fullPage: true });
+  await page.getByRole('checkbox', { name: '전신환 매입율' }).check();
+  await page.getByRole('checkbox', { name: '매매기준율' }).check();
+  await expect(page.locator('.recharts-line-curve')).toHaveCount(12);
+  await page.screenshot({ path: testInfo.outputPath('dark-all-rates.png'), fullPage: true });
+  await page.getByRole('button', { name: '구매 주문 확인' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  expect(await page.locator('.confirmation').evaluate(element => getComputedStyle(element).backgroundColor))
+    .toBe(await page.locator('.trade-tool').evaluate(element => getComputedStyle(element).backgroundColor));
+  await page.getByRole('button', { name: '주문 확인 닫기' }).click();
+  await page.getByRole('button', { name: '로그아웃' }).click();
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  expect(await page.locator('.auth-form input').first().evaluate(element => getComputedStyle(element).backgroundColor))
+    .toBe(await page.locator('.site-header').evaluate(element => getComputedStyle(element).backgroundColor));
+  expect(light.every((color, index) => color !== dark[index])).toBe(true);
+  expect(new Set(light.slice(2)).size).toBe(4);
+  expect(new Set(dark.slice(2)).size).toBe(4);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test('buy, sell and arbitrage require confirmation and use separate endpoints', async ({ page }) => {

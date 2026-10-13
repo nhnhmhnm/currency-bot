@@ -151,3 +151,109 @@ progress::-moz-progress-bar { background:#d6caff; }
   .account-nav { gap:9px; }.account-nav .button { padding:7px 9px; }
   .user-name { max-width:75px; }
 }
+
+:root {
+  color-scheme:light;
+  --purple:#7a2d73;
+  --purple-light:#f8edf6;
+  --background:#faf9fb;
+  --surface:#fff;
+  --text:#27222c;
+  --muted:#706a75;
+  --line:#e5e0e8;
+  --chart-grid:#eae5ed;
+  --buy:#b92e4b;
+  --sell:#266ab3;
+  --base:#167b5d;
+  color:var(--text);
+  background:var(--background);
+}
+.site-header,.button,.auth-form input,.trade-tool,.trade-tabs button.selected,.confirmation { background:var(--surface); }
+.brand,.auth-form input,.amount-input input,.confirmation { color:var(--text); }
+.button.primary,.brand-mark,.limit-band { background:var(--purple); border-color:var(--purple); color:#fff; }
+.button.primary:hover:not(:disabled) { background:#64225e; }
+button:focus-visible,a:focus-visible { outline-color:var(--purple); }
+.rate-buy,.rate-summary .rate-buy strong,.rate-summary .rate-buy .stat-label svg { color:var(--buy); }
+.rate-sell,.rate-summary .rate-sell strong,.rate-summary .rate-sell .stat-label svg { color:var(--sell); }
+.rate-base { color:var(--base); }
+.metric-checks label.checked { color:var(--text); }
+.metric-checks label:has(.buyRate) input { accent-color:var(--buy); }
+.metric-checks label:has(.sellRate) input { accent-color:var(--sell); }
+.metric-checks label:has(.baseRate) input { accent-color:var(--base); }
+.metric-line.buyRate { background:var(--buy); }
+.metric-line.sellRate { background:var(--sell); }
+.metric-line.baseRate { background:var(--base); }
+.chart-legend i.bank-style { width:19px; height:2px; border-radius:0; background:var(--muted); }
+.chart-legend i.bank-style-1 { background:repeating-linear-gradient(to right,var(--muted) 0 8px,transparent 8px 12px); }
+.chart-legend i.bank-style-2 { background:repeating-linear-gradient(to right,var(--muted) 0 2px,transparent 2px 6px); }
+.chart-legend i.bank-style-3 { background:repeating-linear-gradient(to right,var(--muted) 0 10px,transparent 10px 13px,var(--muted) 13px 15px,transparent 15px 18px); }
+.bank-symbol { color:var(--purple); background:var(--purple-light); }
+.trade-tabs .buy { color:var(--buy); }
+.trade-tabs .sell { color:var(--sell); }
+.trade-tabs .buy.selected { color:var(--buy); }
+.trade-tabs .sell.selected { color:var(--sell); }
+.trade-tabs .buy.selected { box-shadow:inset 0 -2px var(--buy); }
+.trade-tabs .sell.selected { box-shadow:inset 0 -2px var(--sell); }
+.receive-line.buy>strong { color:var(--buy); }
+.receive-line.sell>strong { color:var(--sell); }
+.receive-line.arbitrage>strong { color:var(--base); }
+.button.primary.order-button.buy { background:var(--buy); border-color:var(--buy); }
+.button.primary.order-button.sell { background:var(--sell); border-color:var(--sell); }
+.button.primary.order-button.buy:hover:not(:disabled) { background:#96243d; }
+.button.primary.order-button.sell:hover:not(:disabled) { background:#1e568f; }
+.trade-tool { border-color:var(--line); }
+.auth-form input,.amount-input { border-color:var(--line); }
+.quote-details dd { color:var(--text); }
+
+@media(prefers-color-scheme:dark) {
+  :root {
+    color-scheme:dark;
+    --purple:#d391cb;
+    --purple-light:#34233a;
+    --background:#19171e;
+    --surface:#24212a;
+    --text:#f1edf2;
+    --muted:#b1aab6;
+    --line:#443d49;
+    --chart-grid:#403947;
+    --buy:#f0758d;
+    --sell:#82b7f4;
+    --base:#75cba6;
+  }
+  .site-header,.trade-tool,.confirmation,.button,.auth-form input,.trade-tabs button.selected { background:var(--surface); }
+  .brand,.button,.auth-form input,.amount-input input,.confirmation,.metric-checks label.checked { color:var(--text); }
+  .brand-mark,.limit-band,.button.primary { background:#74316e; border-color:#74316e; color:#fff; }
+  .button.primary:hover:not(:disabled) { background:#8a3c83; }
+  .site-footer,.site-footer span:first-child,.refresh-button,.header-currency-tab,.unit-label,.stat-label,.stat-bank,.subtle-badge,.metric-checks label,.live-label,.chart-empty,.chart-empty strong,.chart-empty p,.chart-legend,.time-cell,.table-empty,.market-footnote,.amount-label,.amount-input>span,.available,.available strong,.conversion-line,.receive-line>span,.quote-details dt,.order-note,.security-note,.confirmation-warning,.strategy p { color:var(--muted); }
+  .header-currency-tab.selected,.header-currency-tab:hover { color:var(--purple); }
+  .rate-summary .rate-buy .stat-label svg { color:var(--buy); }
+  .rate-summary .rate-sell .stat-label svg { color:var(--sell); }
+  .rate-summary strong small { color:var(--muted); }
+  .subtle-badge,thead,.trade-tabs { background:#302a36; }
+  thead th { color:var(--muted); }
+  thead th.rate-buy,tbody td.rate-buy { color:var(--buy); }
+  thead th.rate-sell,tbody td.rate-sell { color:var(--sell); }
+  thead th.rate-base,tbody td.rate-base { color:var(--base); }
+  .trade-tabs button.selected { box-shadow:none; }
+  .trade-tabs .buy.selected { box-shadow:inset 0 -2px var(--buy); }
+  .trade-tabs .sell.selected { box-shadow:inset 0 -2px var(--sell); }
+  .limit-band .section-heading,.limit-number>span,.limit-caption { color:#f0d7ed; }
+  progress::-webkit-progress-value,progress::-moz-progress-bar { background:#e2a3d8; }
+  .amount-input:focus-within { border-color:var(--purple); outline-color:#6a3b67; }
+  .conversion-line span { background:var(--line); }
+  .quote-details dd { color:var(--text); }
+  .quote-details dd.positive { color:var(--base); }
+  .quote-details dd.negative { color:var(--buy); }
+  .strategy { background:#2d2432; border-color:var(--line); }
+  .strategy strong { color:var(--text); }
+  .risk-note,.sample-label { background:#3a3026; color:#f1ce88; }
+  .message.error { background:#46272f; color:#ffc4d0; }
+  .message.success { background:#243d34; color:#a5e3c1; }
+  .button.primary.order-button.buy { background:#a72844; border-color:#a72844; color:#fff; }
+  .button.primary.order-button.sell { background:#255d9d; border-color:#255d9d; color:#fff; }
+  .button.primary.order-button.buy:hover:not(:disabled) { background:#bc3452; }
+  .button.primary.order-button.sell:hover:not(:disabled) { background:#3171b5; }
+  .order-feedback { border-color:#46735d; }
+  .confirmation::backdrop { background:#07060acc; }
+  .dot-separator { color:var(--muted); }
+}
