@@ -412,9 +412,9 @@ class ExchangeOrderServiceImpl(
         fromAmount: BigDecimal,
         idempotencyKey: String?
     ): ExchangeOrder {
+        requestValidator.lockUser(userId)
         val fromCurrency = currencyRepository.findByCode(fromCurrencyCode.uppercase())
         val toCurrency = currencyRepository.findByCode(toCurrencyCode.uppercase())
-        requestValidator.lockUser(userId)
 
         if (!idempotencyKey.isNullOrBlank()) {
             exchangeOrderRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)?.let { existingOrder ->

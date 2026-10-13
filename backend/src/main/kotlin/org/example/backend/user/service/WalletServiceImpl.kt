@@ -62,8 +62,8 @@ class WalletServiceImpl(
     @Transactional
     override fun depositFromAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
         requireBankSimulation()
-        validateTransferAmount(currencyId, amount)
         lockActiveUser(userId)
+        validateTransferAmount(currencyId, amount)
         val wallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
         val userAccount = lockConnectedAccount(userId, currencyId, wallet.accountId)
@@ -99,8 +99,8 @@ class WalletServiceImpl(
     @Transactional
     override fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
         requireBankSimulation()
-        validateTransferAmount(currencyId, amount)
         lockActiveUser(userId)
+        validateTransferAmount(currencyId, amount)
         val wallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
