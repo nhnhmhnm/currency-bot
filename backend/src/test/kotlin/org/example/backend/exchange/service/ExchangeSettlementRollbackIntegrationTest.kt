@@ -53,6 +53,8 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.sql.DriverManager
+import java.sql.DatabaseMetaData
+import java.sql.Types
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.Callable
@@ -565,6 +567,30 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `deposit buy sell and withdrawal keep cash wallet and fee deltas balanced`() {
+        var before = balanceSnapshot()
+
+        walletService.depositFromAccount(USER_ID, KRW_ID, BigDecimal("100000"))
+        before = assertBalancedChange(before, BigDecimal("-100000"))
+
+        val buy = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "balanced-buy")
+        exchangeOrderService.processQueuedOrder(buy.id)
+        before = assertBalancedChange(before, BigDecimal.ZERO)
+
+        val sell = exchangeOrderService.requestSellOrder(USER_ID, "USD", BigDecimal("10"), "balanced-sell")
+        exchangeOrderService.processQueuedOrder(sell.id)
+        before = assertBalancedChange(before, BigDecimal.ZERO)
+
+        walletService.withdrawToAccount(USER_ID, KRW_ID, BigDecimal("50000"))
+        assertBalancedChange(before, BigDecimal("50000"))
+
+        exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 2
+        transactionRepository.count() shouldBe 4L
+        exchangeLedgerRepository.count() shouldBe 2L
+        jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 2L
+    }
+
+    @Test
     fun `deposit checks account ownership status and currency`() {
         val account = accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!
         account.isActive = false
@@ -699,6 +725,47 @@ class ExchangeSettlementRollbackIntegrationTest {
                 true
             )
         }
+        assertThrows<DataIntegrityViolationException> {
+            jdbcTemplate.update(
+                "insert into internal_account (code, currency_id, balance) values (?, ?, ?)",
+                CompanyAccount.KRW_ACCOUNT.name,
+                KRW_ID,
+                BigDecimal.ZERO
+            )
+        }
+        val accountId = accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.id!!
+        assertThrows<DataIntegrityViolationException> {
+            jdbcTemplate.update(
+                "insert into simulated_bank_balance (account_id, balance) values (?, ?)",
+                accountId,
+                BigDecimal.ZERO
+            )
+        }
+    }
+
+    @Test
+    fun `real MySQL schema keeps precise non-null balances and no legacy account balance`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+
+        jdbcTemplate.dataSource!!.connection.use { connection ->
+            val metadata = connection.metaData
+            for (table in listOf("wallet", "internal_account", "simulated_bank_balance")) {
+                metadata.getColumns(connection.catalog, null, table, "balance").use { columns ->
+                    check(columns.next()) { "Missing $table.balance" }
+                    columns.getInt("DATA_TYPE") shouldBe Types.DECIMAL
+                    columns.getInt("COLUMN_SIZE") shouldBe 24
+                    columns.getInt("DECIMAL_DIGITS") shouldBe 8
+                    columns.getInt("NULLABLE") shouldBe DatabaseMetaData.columnNoNulls
+                    columns.next() shouldBe false
+                }
+            }
+            metadata.getColumns(connection.catalog, null, "account", "balance").use { columns ->
+                columns.next() shouldBe false
+            }
+            metadata.getColumns(connection.catalog, null, "wallet", "is_connected").use { columns ->
+                columns.next() shouldBe false
+            }
+        }
     }
 
     private fun <T> runConcurrently(taskCount: Int, action: (Int) -> T): List<Result<T>> {
@@ -737,6 +804,35 @@ class ExchangeSettlementRollbackIntegrationTest {
     private fun simulatedBankBalance(): BigDecimal {
         val accountId = accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.id!!
         return simulatedBankBalanceRepository.findById(accountId).orElseThrow().balance
+    }
+
+    private data class BalanceSnapshot(
+        val walletKrw: BigDecimal,
+        val walletUsd: BigDecimal,
+        val cashKrw: BigDecimal,
+        val cashUsd: BigDecimal,
+        val feeRevenueKrw: BigDecimal,
+        val externalBankKrw: BigDecimal
+    )
+
+    private fun balanceSnapshot() = BalanceSnapshot(
+        walletBalance(KRW_ID),
+        walletBalance(USD_ID),
+        companyBalance(CompanyAccount.KRW_ACCOUNT),
+        companyBalance(CompanyAccount.USD_ACCOUNT),
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT),
+        simulatedBankBalance()
+    )
+
+    private fun assertBalancedChange(before: BalanceSnapshot, expectedBankDelta: BigDecimal): BalanceSnapshot {
+        val after = balanceSnapshot()
+        val walletKrwDelta = after.walletKrw.subtract(before.walletKrw)
+        val feeDelta = after.feeRevenueKrw.subtract(before.feeRevenueKrw)
+        after.cashKrw.subtract(before.cashKrw).compareTo(walletKrwDelta.add(feeDelta)) shouldBe 0
+        after.cashUsd.subtract(before.cashUsd)
+            .compareTo(after.walletUsd.subtract(before.walletUsd)) shouldBe 0
+        after.externalBankKrw.subtract(before.externalBankKrw).compareTo(expectedBankDelta) shouldBe 0
+        return after
     }
 
     private val quotedUserTable: String
