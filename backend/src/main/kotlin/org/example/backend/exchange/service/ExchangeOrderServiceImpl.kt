@@ -23,7 +23,10 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 @Service
 class ExchangeOrderServiceImpl(
@@ -107,8 +110,13 @@ class ExchangeOrderServiceImpl(
             return order.toDto()
         }
 
+        order.nextAttemptAt?.let { due ->
+            if (due.isAfter(Instant.now())) throw OrderRetryNotDueException(due)
+        }
+
         order.status = OrderStatus.PROCESSING
         order.processedAt = LocalDateTime.now()
+        order.nextAttemptAt = null
         requestValidator.validateForProcessing(order)
 
         return when (order.orderType) {
@@ -119,14 +127,36 @@ class ExchangeOrderServiceImpl(
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    override fun markFailed(orderId: Long, stage: String, reason: String) {
-        val order = exchangeOrderRepository.findByIdForUpdate(orderId) ?: return
-        if (order.status in terminalStatuses) return
+    override fun recordProcessingFailure(
+        orderId: Long,
+        failureId: String,
+        reason: String,
+        maxAttempts: Int
+    ): OrderRetryDecision {
+        require(maxAttempts > 0)
+        val order = exchangeOrderRepository.findByIdForUpdate(orderId)
+            ?: return OrderRetryDecision(terminal = true)
+        if (order.status in terminalStatuses) return OrderRetryDecision(terminal = true)
+        if (order.lastFailureId == failureId) {
+            return OrderRetryDecision(terminal = order.status == OrderStatus.FAILED, nextAttemptAt = order.nextAttemptAt)
+        }
 
-        order.status = OrderStatus.FAILED
-        order.failureStage = stage
+        order.lastFailureId = failureId
+        order.retryAttempts += 1
+        order.failureStage = "ORDER_WORKER"
         order.failureReason = reason.take(255)
-        order.completedAt = LocalDateTime.now()
+
+        if (order.retryAttempts >= maxAttempts) {
+            order.status = OrderStatus.FAILED
+            order.completedAt = LocalDateTime.now()
+            order.nextAttemptAt = null
+            return OrderRetryDecision(terminal = true)
+        }
+
+        val delay = Duration.ofSeconds(1L shl order.retryAttempts.coerceAtMost(6))
+        order.nextAttemptAt = Instant.now().plus(delay).truncatedTo(ChronoUnit.MILLIS)
+        order.status = OrderStatus.QUEUED
+        return OrderRetryDecision(terminal = false, nextAttemptAt = order.nextAttemptAt)
     }
 
     @Transactional

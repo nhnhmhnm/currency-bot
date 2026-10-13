@@ -284,6 +284,98 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `retry state survives rollback and duplicate failure reports`() {
+        val order = exchangeOrderRepository.save(
+            ExchangeOrder(
+                userId = USER_ID,
+                bankId = 0L,
+                fromCurrencyId = KRW_ID,
+                toCurrencyId = USD_ID,
+                fromAmount = ORDER_AMOUNT,
+                toAmount = BigDecimal.ZERO,
+                exchangeRate = BigDecimal.ZERO,
+                status = OrderStatus.QUEUED
+            )
+        )
+        val orderId = order.id!!
+
+        val first = exchangeOrderService.recordProcessingFailure(orderId, "lease-a", "temporary", 3)
+        first.terminal shouldBe false
+        assertThrows<OrderRetryNotDueException> { exchangeOrderService.processQueuedOrder(orderId) }
+        val repeated = exchangeOrderService.recordProcessingFailure(orderId, "lease-a", "temporary", 3)
+        repeated shouldBe first
+        exchangeOrderRepository.findById(orderId).orElseThrow().retryAttempts shouldBe 1
+
+        exchangeOrderService.recordProcessingFailure(orderId, "lease-b", "temporary", 3)
+        exchangeOrderService.recordProcessingFailure(orderId, "lease-c", "persistent", 3).terminal shouldBe true
+
+        val failed = exchangeOrderRepository.findById(orderId).orElseThrow()
+        failed.status shouldBe OrderStatus.FAILED
+        failed.retryAttempts shouldBe 3
+        failed.nextAttemptAt shouldBe null
+        exchangeOrderRepository.sumReservedFromAmount(
+            USER_ID, KRW_ID, ExchangeOrderRepository.RESERVING_STATUSES
+        ).compareTo(BigDecimal.ZERO) shouldBe 0
+        transactionRepository.count() shouldBe 0L
+        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe USER_KRW_BALANCE
+    }
+
+    @Test
+    fun `late retry report cannot fail an already settled order`() {
+        val order = exchangeOrderRepository.save(
+            ExchangeOrder(
+                userId = USER_ID,
+                bankId = 0L,
+                fromCurrencyId = KRW_ID,
+                toCurrencyId = USD_ID,
+                fromAmount = ORDER_AMOUNT,
+                toAmount = BigDecimal.ZERO,
+                exchangeRate = BigDecimal.ZERO,
+                status = OrderStatus.QUEUED
+            )
+        )
+        val orderId = order.id!!
+        exchangeOrderService.processQueuedOrder(orderId)
+
+        exchangeOrderService.recordProcessingFailure(orderId, "late-lease", "ACK timeout", 3).terminal shouldBe true
+        exchangeOrderRepository.findById(orderId).orElseThrow().status shouldBe OrderStatus.SETTLED
+        exchangeOrderRepository.findById(orderId).orElseThrow().retryAttempts shouldBe 0
+        transactionRepository.count() shouldBe 2L
+        exchangeLedgerRepository.count() shouldBe 1L
+    }
+
+    @Test
+    fun `redelivered settled order does not move money or duplicate records`() {
+        val order = exchangeOrderRepository.save(
+            ExchangeOrder(
+                userId = USER_ID,
+                bankId = 0L,
+                fromCurrencyId = KRW_ID,
+                toCurrencyId = USD_ID,
+                fromAmount = ORDER_AMOUNT,
+                toAmount = BigDecimal.ZERO,
+                exchangeRate = BigDecimal.ZERO,
+                status = OrderStatus.QUEUED
+            )
+        )
+        val orderId = order.id!!
+
+        val deliveries = runConcurrently(2) {
+            exchangeOrderService.processQueuedOrder(orderId)
+        }
+
+        deliveries.count { it.isSuccess } shouldBe 2
+        deliveries.forEach {
+            it.getOrThrow().status shouldBe org.example.backend.enums.PublicOrderStatus.COMPLETED
+        }
+        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe BigDecimal("900000.00")
+        walletRepository.findByUserIdAndCurrencyId(USER_ID, USD_ID)!!.balance shouldBe BigDecimal("176.92")
+        transactionRepository.count() shouldBe 2L
+        exchangeLedgerRepository.count() shouldBe 1L
+        walletFxHistoryRepository.count() shouldBe 3L
+    }
+
+    @Test
     fun `invalid deposits and withdrawals do not change balances or create records`() {
         for (amount in listOf(BigDecimal.ZERO, BigDecimal("-1"), BigDecimal("1.5"))) {
             val deposit = assertThrows<UserException> {

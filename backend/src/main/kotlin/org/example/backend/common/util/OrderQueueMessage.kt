@@ -2,5 +2,6 @@ package org.example.backend.common.util
 
 data class OrderQueueMessage(
     val token: String,
-    val orderId: Long
+    val orderId: Long,
+    val leaseId: String
 )

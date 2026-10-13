@@ -27,7 +27,7 @@ interface ExchangeOrderService {
 
     fun processQueuedOrder(orderId: Long): ExchangeOrderResponse
 
-    fun markFailed(orderId: Long, stage: String, reason: String)
+    fun recordProcessingFailure(orderId: Long, failureId: String, reason: String, maxAttempts: Int): OrderRetryDecision
 
     fun buyOrder(userId: Long, currencyCode: String, fromAmount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse
 

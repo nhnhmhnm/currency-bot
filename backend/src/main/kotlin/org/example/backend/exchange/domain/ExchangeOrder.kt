@@ -5,6 +5,7 @@ import org.example.backend.enums.OrderType
 import org.example.backend.enums.OrderStatus
 import org.hibernate.annotations.CreationTimestamp
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDateTime
 
 @Entity
@@ -15,6 +16,9 @@ import java.time.LocalDateTime
             name = "uk_exchange_order_user_idempotency_key",
             columnNames = ["user_id", "idempotency_key"]
         )
+    ],
+    indexes = [
+        Index(name = "idx_exchange_order_recovery", columnList = "status,requested_at,id")
     ]
 )
 class ExchangeOrder(
@@ -62,6 +66,15 @@ class ExchangeOrder(
 
     @Column(name = "failure_reason")
     var failureReason: String? = null,
+
+    @Column(name = "retry_attempts", nullable = false, columnDefinition = "integer default 0")
+    var retryAttempts: Int = 0,
+
+    @Column(name = "next_attempt_at")
+    var nextAttemptAt: Instant? = null,
+
+    @Column(name = "last_failure_id", length = 64)
+    var lastFailureId: String? = null,
 
     @Column(name = "processed_at")
     var processedAt: LocalDateTime? = null,

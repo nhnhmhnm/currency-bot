@@ -25,6 +25,12 @@ interface ExchangeOrderRepository : JpaRepository<ExchangeOrder, Long> {
 
     fun findByUserIdAndIdempotencyKey(userId: Long, idempotencyKey: String): ExchangeOrder?
 
+    fun findTop100ByStatusInAndRequestedAtBeforeAndIdGreaterThanOrderByIdAsc(
+        statuses: Collection<OrderStatus>,
+        requestedAt: LocalDateTime,
+        id: Long
+    ): List<ExchangeOrder>
+
     @Query(
         """
         select coalesce(sum(o.fromAmount), 0)

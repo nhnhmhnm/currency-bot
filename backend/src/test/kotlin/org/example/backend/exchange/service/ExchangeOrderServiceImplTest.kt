@@ -265,7 +265,7 @@ class ExchangeOrderServiceImplTest : FunSpec({
         )
         every { exchangeOrderRepository.findByIdForUpdate(30L) } returns settledOrder
 
-        sut.markFailed(30L, "ORDER_WORKER", "lease expired")
+        sut.recordProcessingFailure(30L, "lease-30", "lease expired", 3).terminal shouldBe true
 
         settledOrder.status shouldBe OrderStatus.SETTLED
         settledOrder.failureReason shouldBe null
