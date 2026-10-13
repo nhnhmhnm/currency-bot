@@ -11,6 +11,14 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 interface ExchangeOrderRepository : JpaRepository<ExchangeOrder, Long> {
+    companion object {
+        val RESERVING_STATUSES = listOf(
+            OrderStatus.REQUESTED,
+            OrderStatus.QUEUED,
+            OrderStatus.PROCESSING,
+            OrderStatus.PENDING
+        )
+    }
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from ExchangeOrder o where o.id = :id")
     fun findByIdForUpdate(id: Long): ExchangeOrder?

@@ -29,8 +29,7 @@ class SecurityConfig(
                     HttpMethod.POST,
                     "/api/user/signup",
                     "/api/auth/login",
-                    "/api/auth/reissue",
-                    "/api/account"
+                    "/api/auth/reissue"
                 ).permitAll()
 
                 // 인증 필요 경로

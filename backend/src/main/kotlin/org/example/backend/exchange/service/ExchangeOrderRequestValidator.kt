@@ -101,7 +101,7 @@ class ExchangeOrderRequestValidator(
         val reservedAmount = exchangeOrderRepository.sumReservedFromAmount(
             userId = userId,
             currencyId = currencyId,
-            statuses = RESERVING_STATUSES
+            statuses = ExchangeOrderRepository.RESERVING_STATUSES
         )
         val availableAmount = wallet.balance.subtract(reservedAmount)
 
@@ -169,12 +169,6 @@ class ExchangeOrderRequestValidator(
         private const val RATE_SCALE = 10
         private const val USD_SCALE = 6
         private val SEOUL_ZONE: ZoneId = ZoneId.of("Asia/Seoul")
-        private val RESERVING_STATUSES = listOf(
-            OrderStatus.REQUESTED,
-            OrderStatus.QUEUED,
-            OrderStatus.PROCESSING,
-            OrderStatus.PENDING
-        )
         private val DAILY_LIMIT_STATUSES = listOf(
             OrderStatus.REQUESTED,
             OrderStatus.QUEUED,

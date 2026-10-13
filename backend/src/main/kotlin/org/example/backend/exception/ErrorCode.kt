@@ -25,9 +25,11 @@ enum class ErrorCode (
   SUPER_ACCOUNT_NOT_FOUND(HttpStatus.BAD_REQUEST, 305, "super account not found"),
   INSUFFICIENT_ACCOUNT_BALANCE(HttpStatus.BAD_REQUEST, 306, "insufficient balance"),
   COMPANY_ACCOUNT_NOT_FOUND(HttpStatus.BAD_REQUEST, 307, "company account not found"),
+  ACCOUNT_INACTIVE(HttpStatus.BAD_REQUEST, 308, "account is inactive"),
 
   // CURRENCY 400
   CURRENCY_MISMATCH(HttpStatus.BAD_REQUEST, 401, "currency mismatch"),
+  INVALID_TRANSFER_AMOUNT(HttpStatus.BAD_REQUEST, 402, "transfer amount must be positive and match currency scale"),
 
   // EXCHANGE ORDER 500
   INVALID_EXCHANGE_AMOUNT(HttpStatus.BAD_REQUEST, 501, "exchange amount must be positive"),

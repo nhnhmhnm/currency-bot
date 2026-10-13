@@ -1,14 +1,16 @@
 package org.example.backend.user.service
 
-import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.TransferReason
 import org.example.backend.enums.WalletTransactionType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
+import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.user.dto.BalanceRef
 import org.example.backend.user.dto.DepositWithdrawalCommand
 import org.example.backend.user.dto.MoneyMovementCommand
 import org.example.backend.user.repository.AccountRepository
+import org.example.backend.user.repository.UserRepository
 import org.example.backend.user.repository.WalletRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -18,20 +20,27 @@ import java.math.BigDecimal
 class WalletServiceImpl(
     private val walletRepository: WalletRepository,
     private val accountRepository: AccountRepository,
+    private val userRepository: UserRepository,
+    private val currencyRepository: CurrencyRepository,
+    private val exchangeOrderRepository: ExchangeOrderRepository,
     private val depositWithdrawalService: DepositWithdrawalService,
     private val moneyMovementService: MoneyMovementService
 ) : WalletService {
 
     @Transactional
     override fun connectAccount(userId: Long, bankId: Long, accountNum: String) {
+        lockActiveUser(userId)
         val account = accountRepository.findByBankIdAndAccountNum(bankId, accountNum)
             ?: throw UserException(ErrorCode.ACCOUNT_NOT_FOUND)
 
         if (account.userId != userId) {
             throw UserException(ErrorCode.INCORRECT_OWNER)
         }
+        if (!account.isActive) {
+            throw UserException(ErrorCode.ACCOUNT_INACTIVE)
+        }
 
-        val wallet = walletRepository.findByUserIdAndCurrencyId(userId, account.currencyId)
+        val wallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, account.currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
         wallet.accountId = account.id
@@ -46,29 +55,20 @@ class WalletServiceImpl(
 
     @Transactional
     override fun depositFromAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
-        val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
+        validateTransferAmount(currencyId, amount)
+        lockActiveUser(userId)
+        val wallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
-
-        val userAccount = wallet.accountId?.let { accountRepository.findById(it).orElse(null) }
-            ?: throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
-
-        val superAccount = accountRepository.findByBankIdAndAccountNum(
-            CompanyAccount.KRW_ACCOUNT.bankId,
-            CompanyAccount.KRW_ACCOUNT.accountNum
-        ) ?: throw UserException(ErrorCode.SUPER_ACCOUNT_NOT_FOUND)
+        val userAccount = lockConnectedAccount(userId, currencyId, wallet.accountId, wallet.isConnected)
 
         if (userAccount.balance < amount) {
             throw UserException(ErrorCode.INSUFFICIENT_ACCOUNT_BALANCE)
         }
 
         userAccount.balance = userAccount.balance.minus(amount)
-        superAccount.balance = superAccount.balance.plus(amount)
-
-        superAccount.balance = superAccount.balance.minus(amount)
         wallet.balance = wallet.balance.plus(amount)
 
         accountRepository.save(userAccount)
-        accountRepository.save(superAccount)
         walletRepository.save(wallet)
 
         depositWithdrawalService.record(
@@ -86,15 +86,20 @@ class WalletServiceImpl(
 
     @Transactional
     override fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
-        val wallet = walletRepository.findByUserIdAndCurrencyId(userId, currencyId)
+        validateTransferAmount(currencyId, amount)
+        lockActiveUser(userId)
+        val wallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
-        if (wallet.balance < amount) {
+        val userAccount = lockConnectedAccount(userId, currencyId, wallet.accountId, wallet.isConnected)
+        val reservedAmount = exchangeOrderRepository.sumReservedFromAmount(
+            userId,
+            currencyId,
+            ExchangeOrderRepository.RESERVING_STATUSES
+        )
+        if (wallet.balance.subtract(reservedAmount) < amount) {
             throw UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
         }
-
-        val userAccount = wallet.accountId?.let { accountRepository.findById(it).orElse(null) }
-            ?: throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
 
         wallet.balance = wallet.balance.minus(amount)
         userAccount.balance = userAccount.balance.plus(amount)
@@ -114,6 +119,44 @@ class WalletServiceImpl(
 
         return wallet.balance
     }
+
+    private fun lockActiveUser(userId: Long) {
+        val user = userRepository.findByIdForUpdate(userId)
+            ?: throw UserException(ErrorCode.USER_NOT_FOUND)
+        if (!user.isActive) {
+            throw UserException(ErrorCode.INCORRECT_OWNER)
+        }
+    }
+
+    private fun validateTransferAmount(currencyId: Long, amount: BigDecimal) {
+        if (amount <= BigDecimal.ZERO) {
+            throw UserException(ErrorCode.INVALID_TRANSFER_AMOUNT)
+        }
+        val currency = currencyRepository.findById(currencyId).orElseThrow {
+            UserException(ErrorCode.CURRENCY_MISMATCH)
+        }
+        if (amount.stripTrailingZeros().scale() > currency.scale) {
+            throw UserException(ErrorCode.INVALID_TRANSFER_AMOUNT)
+        }
+    }
+
+    private fun lockConnectedAccount(userId: Long, currencyId: Long, accountId: Long?, connected: Boolean) =
+        if (!connected || accountId == null) {
+            throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
+        } else {
+            val account = accountRepository.findByIdForUpdate(accountId)
+                ?: throw UserException(ErrorCode.ACCOUNT_NOT_FOUND)
+            if (account.userId != userId) {
+                throw UserException(ErrorCode.INCORRECT_OWNER)
+            }
+            if (account.currencyId != currencyId) {
+                throw UserException(ErrorCode.CURRENCY_MISMATCH)
+            }
+            if (!account.isActive) {
+                throw UserException(ErrorCode.ACCOUNT_INACTIVE)
+            }
+            account
+        }
 
     @Transactional
     override fun companyToCompany(fromAccountId: Long, toAccountId: Long, amount: BigDecimal): BigDecimal {

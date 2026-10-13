@@ -1,9 +1,11 @@
 package org.example.backend.exchange.service
 
 import io.kotest.matchers.shouldBe
+import org.example.backend.auth.dto.UserPrincipal
 import org.example.backend.enums.ExchangeType
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
+import org.example.backend.enums.UserType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.exchange.domain.ExchangeOrder
@@ -18,15 +20,26 @@ import org.example.backend.finance.domain.Currency
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.WalletFxHistoryRepository
 import org.example.backend.user.repository.WalletRepository
+import org.example.backend.user.dto.AccountCreateRequest
+import org.example.backend.user.service.AccountService
+import org.example.backend.user.service.WalletService
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
+import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.concurrent.Callable
@@ -47,6 +60,7 @@ import java.util.concurrent.TimeUnit
         ExchangeSettlementRollbackIntegrationTest.TestConfig::class
     ]
 )
+@AutoConfigureMockMvc
 class ExchangeSettlementRollbackIntegrationTest {
     @Autowired
     private lateinit var exchangeOrderService: ExchangeOrderService
@@ -78,10 +92,20 @@ class ExchangeSettlementRollbackIntegrationTest {
     @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
 
+    @Autowired
+    private lateinit var walletService: WalletService
+
+    @Autowired
+    private lateinit var accountService: AccountService
+
+    @Autowired
+    private lateinit var mockMvc: MockMvc
+
     @BeforeEach
     fun setUp() {
         ledgerService.failOnRecord = false
         walletFxHistoryRepository.deleteAll()
+        jdbcTemplate.update("delete from deposit_withdrawal")
         exchangeLedgerRepository.deleteAll()
         transactionRepository.deleteAll()
         outboxEventRepository.deleteAll()
@@ -90,6 +114,9 @@ class ExchangeSettlementRollbackIntegrationTest {
         accountRepository.deleteAll()
         jdbcTemplate.update("delete from \"user\"")
         jdbcTemplate.update("delete from currency")
+        jdbcTemplate.update("delete from bank")
+
+        jdbcTemplate.update("insert into bank (id, code, name) values (?, ?, ?)", 1L, "TEST", "Test bank")
 
         jdbcTemplate.update(
             "insert into currency (id, code, name, scale, unit) values (?, ?, ?, ?, ?)",
@@ -136,6 +163,23 @@ class ExchangeSettlementRollbackIntegrationTest {
             KRW_ID,
             USER_KRW_BALANCE,
             false
+        )
+        jdbcTemplate.update(
+            "insert into account (user_id, bank_id, currency_id, account_num, balance, is_active, created_at) " +
+                "values (?, ?, ?, ?, ?, ?, current_timestamp)",
+            USER_ID,
+            1L,
+            KRW_ID,
+            USER_ACCOUNT_NUM,
+            BigDecimal("500000"),
+            true
+        )
+        val userAccountId = accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.id!!
+        jdbcTemplate.update(
+            "update wallet set account_id = ?, is_connected = true where user_id = ? and currency_id = ?",
+            userAccountId,
+            USER_ID,
+            KRW_ID
         )
         jdbcTemplate.update(
             "insert into wallet (user_id, currency_id, balance, is_connected) values (?, ?, ?, ?)",
@@ -239,6 +283,129 @@ class ExchangeSettlementRollbackIntegrationTest {
         outboxEventRepository.count() shouldBe 5L
     }
 
+    @Test
+    fun `invalid deposits and withdrawals do not change balances or create records`() {
+        for (amount in listOf(BigDecimal.ZERO, BigDecimal("-1"), BigDecimal("1.5"))) {
+            val deposit = assertThrows<UserException> {
+                walletService.depositFromAccount(USER_ID, KRW_ID, amount)
+            }
+            deposit.errorCode shouldBe ErrorCode.INVALID_TRANSFER_AMOUNT.code
+
+            val withdrawal = assertThrows<UserException> {
+                walletService.withdrawToAccount(USER_ID, KRW_ID, amount)
+            }
+            withdrawal.errorCode shouldBe ErrorCode.INVALID_TRANSFER_AMOUNT.code
+        }
+        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe USER_KRW_BALANCE
+        accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.balance shouldBe BigDecimal("500000.00")
+        jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 0L
+    }
+
+    @Test
+    fun `deposit moves balance and records it once`() {
+        walletService.depositFromAccount(USER_ID, KRW_ID, BigDecimal("100000")) shouldBe BigDecimal("1100000.00")
+        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe BigDecimal("1100000.00")
+        accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.balance shouldBe BigDecimal("400000.00")
+        jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 1L
+    }
+
+    @Test
+    fun `deposit checks account ownership status and currency`() {
+        val account = accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!
+        account.isActive = false
+        accountRepository.saveAndFlush(account)
+        assertThrows<UserException> {
+            walletService.depositFromAccount(USER_ID, KRW_ID, BigDecimal("1"))
+        }.errorCode shouldBe ErrorCode.ACCOUNT_INACTIVE.code
+
+        account.isActive = true
+        accountRepository.saveAndFlush(account)
+        jdbcTemplate.update("update account set user_id = ? where id = ?", COMPANY_USER_ID, account.id)
+        assertThrows<UserException> {
+            walletService.depositFromAccount(USER_ID, KRW_ID, BigDecimal("1"))
+        }.errorCode shouldBe ErrorCode.INCORRECT_OWNER.code
+
+        jdbcTemplate.update(
+            "update account set user_id = ?, currency_id = ? where id = ?",
+            USER_ID,
+            USD_ID,
+            account.id
+        )
+        assertThrows<UserException> {
+            walletService.depositFromAccount(USER_ID, KRW_ID, BigDecimal("1"))
+        }.errorCode shouldBe ErrorCode.CURRENCY_MISMATCH.code
+    }
+
+    @Test
+    fun `withdrawal cannot spend funds reserved by an accepted order`() {
+        exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "reserved-withdraw")
+
+        assertThrows<UserException> {
+            walletService.withdrawToAccount(USER_ID, KRW_ID, USER_KRW_BALANCE)
+        }.errorCode shouldBe ErrorCode.INSUFFICIENT_WALLET_BALANCE.code
+
+        walletService.withdrawToAccount(USER_ID, KRW_ID, BigDecimal("900000")) shouldBe BigDecimal("100000.00")
+        accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.balance shouldBe BigDecimal("1400000.00")
+        jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 1L
+    }
+
+    @Test
+    fun `concurrent order admission and withdrawal cannot overdraw available balance`() {
+        jdbcTemplate.update(
+            "update wallet set balance = ? where user_id = ? and currency_id = ?",
+            ORDER_AMOUNT,
+            USER_ID,
+            KRW_ID
+        )
+        val results = runConcurrently(2) { index ->
+            if (index == 0) {
+                exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "withdraw-race")
+            } else {
+                walletService.withdrawToAccount(USER_ID, KRW_ID, ORDER_AMOUNT)
+            }
+        }
+
+        results.count { it.isSuccess } shouldBe 1
+        (results.single { it.isFailure }.exceptionOrNull() as UserException).errorCode shouldBe
+            ErrorCode.INSUFFICIENT_WALLET_BALANCE.code
+        val balance = walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance
+        val reserved = exchangeOrderRepository.sumReservedFromAmount(
+            USER_ID, KRW_ID, ExchangeOrderRepository.RESERVING_STATUSES
+        )
+        (balance.subtract(reserved) >= BigDecimal.ZERO) shouldBe true
+        (exchangeOrderRepository.count() +
+            jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java)!!) shouldBe 1L
+    }
+
+    @Test
+    fun `account creation requires authentication and starts at zero balance`() {
+        mockMvc.perform(
+            post("/api/account")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"bankId":1,"currencyId":1,"accountNum":"new-account"}""")
+        ).andExpect(status().isForbidden)
+
+        val principal = UserPrincipal(USER_ID, "user", UserType.GENERAL)
+        val auth = UsernamePasswordAuthenticationToken(
+            principal,
+            null,
+            listOf(SimpleGrantedAuthority("ROLE_GENERAL"))
+        )
+        mockMvc.perform(
+            post("/api/account")
+                .with(authentication(auth))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"bankId":1,"currencyId":1,"accountNum":"new-account"}""")
+        ).andExpect(status().isCreated)
+
+        val account = accountRepository.findByBankIdAndAccountNum(1L, "new-account")!!
+        account.userId shouldBe USER_ID
+        account.balance.compareTo(BigDecimal.ZERO) shouldBe 0
+        assertThrows<UserException> {
+            accountService.createAccount(COMPANY_USER_ID, AccountCreateRequest(1L, KRW_ID, "company-forged"))
+        }.errorCode shouldBe ErrorCode.INCORRECT_OWNER.code
+    }
+
     private fun <T> runConcurrently(taskCount: Int, action: (Int) -> T): List<Result<T>> {
         val executor = Executors.newFixedThreadPool(taskCount)
         val ready = CountDownLatch(taskCount)
@@ -337,6 +504,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         private const val USER_ID = 10L
         private const val KRW_ID = 1L
         private const val USD_ID = 2L
+        private const val USER_ACCOUNT_NUM = "user-krw-account"
         private val RATE = BigDecimal("1300")
         private val ORDER_AMOUNT = BigDecimal("100000")
         private val USER_KRW_BALANCE = BigDecimal("1000000.00")

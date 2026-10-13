@@ -1,34 +1,47 @@
 package org.example.backend.user.service
 
+import org.example.backend.enums.UserType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
+import org.example.backend.finance.repository.BankRepository
+import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.user.domain.Account
 import org.example.backend.user.dto.AccountCreateRequest
 import org.example.backend.user.repository.AccountRepository
+import org.example.backend.user.repository.UserRepository
 import org.springframework.stereotype.Service
-import java.math.BigDecimal
+import org.springframework.transaction.annotation.Transactional
 
 @Service
 class AccountServiceImpl(
-  private val accountRepository: AccountRepository
-) : AccountService{
-  override fun createAccount(request: AccountCreateRequest) {
-    // 중복 계좌 확인
-//    if (accountRepository.findByUserIdAndCurrencyId(userId = request.userid, currencyId = request.currencyId) != null) {
-//      throw UserException(ErrorCode.DUPLICATED_ACCOUNT)
-//    }
+    private val accountRepository: AccountRepository,
+    private val userRepository: UserRepository,
+    private val bankRepository: BankRepository,
+    private val currencyRepository: CurrencyRepository
+) : AccountService {
+    @Transactional
+    override fun createAccount(userId: Long, request: AccountCreateRequest) {
+        val user = userRepository.findById(userId).orElseThrow { UserException(ErrorCode.USER_NOT_FOUND) }
+        if (!user.isActive || user.type != UserType.GENERAL) {
+            throw UserException(ErrorCode.INCORRECT_OWNER)
+        }
+        if (request.accountNum.isBlank() || !bankRepository.existsById(request.bankId)) {
+            throw UserException(ErrorCode.ACCOUNT_NOT_FOUND)
+        }
+        if (!currencyRepository.existsById(request.currencyId)) {
+            throw UserException(ErrorCode.CURRENCY_MISMATCH)
+        }
+        if (accountRepository.findByBankIdAndAccountNum(request.bankId, request.accountNum) != null) {
+            throw UserException(ErrorCode.DUPLICATED_ACCOUNT)
+        }
 
-    // 객체 생성
-    val account = Account(
-      userId = request.userid,
-      bankId = request.bankId,
-      currencyId = request.currencyId,
-      accountNum = request.accountNum,
-      balance = BigDecimal("1000000000.00"),
-      isActive = true
-    )
-    
-    // 저장
-    accountRepository.save(account)
-  }
+        accountRepository.save(
+            Account(
+                userId = userId,
+                bankId = request.bankId,
+                currencyId = request.currencyId,
+                accountNum = request.accountNum
+            )
+        )
+    }
 }
