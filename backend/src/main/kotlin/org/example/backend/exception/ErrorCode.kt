@@ -26,6 +26,9 @@ enum class ErrorCode (
   INSUFFICIENT_ACCOUNT_BALANCE(HttpStatus.BAD_REQUEST, 306, "insufficient balance"),
   COMPANY_ACCOUNT_NOT_FOUND(HttpStatus.BAD_REQUEST, 307, "company account not found"),
   ACCOUNT_INACTIVE(HttpStatus.BAD_REQUEST, 308, "account is inactive"),
+  BANK_INTEGRATION_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, 309, "bank transfer is unavailable"),
+  SIMULATED_BANK_BALANCE_NOT_FOUND(HttpStatus.INTERNAL_SERVER_ERROR, 310, "simulated bank balance not found"),
+  COMPANY_LIQUIDITY_INSUFFICIENT(HttpStatus.SERVICE_UNAVAILABLE, 311, "company liquidity is insufficient"),
 
   // CURRENCY 400
   CURRENCY_MISMATCH(HttpStatus.BAD_REQUEST, 401, "currency mismatch"),

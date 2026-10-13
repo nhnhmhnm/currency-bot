@@ -3,6 +3,7 @@ package org.example.backend.exchange.service
 import io.kotest.matchers.shouldBe
 import org.example.backend.auth.dto.UserPrincipal
 import org.example.backend.enums.ExchangeType
+import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
 import org.example.backend.enums.UserType
@@ -17,7 +18,10 @@ import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exchange.repository.TransactionRepository
 import org.example.backend.finance.domain.Currency
+import org.example.backend.finance.domain.InternalAccount
+import org.example.backend.finance.repository.InternalAccountRepository
 import org.example.backend.user.repository.AccountRepository
+import org.example.backend.user.repository.SimulatedBankBalanceRepository
 import org.example.backend.user.repository.WalletFxHistoryRepository
 import org.example.backend.user.repository.WalletRepository
 import org.example.backend.user.dto.AccountCreateRequest
@@ -33,6 +37,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.http.MediaType
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -53,6 +58,7 @@ import java.util.concurrent.TimeUnit
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "app.bank.simulation-enabled=true",
         "app.scheduling.enabled=false"
     ],
     classes = [
@@ -76,6 +82,12 @@ class ExchangeSettlementRollbackIntegrationTest {
 
     @Autowired
     private lateinit var accountRepository: AccountRepository
+
+    @Autowired
+    private lateinit var internalAccountRepository: InternalAccountRepository
+
+    @Autowired
+    private lateinit var simulatedBankBalanceRepository: SimulatedBankBalanceRepository
 
     @Autowired
     private lateinit var transactionRepository: TransactionRepository
@@ -111,7 +123,9 @@ class ExchangeSettlementRollbackIntegrationTest {
         outboxEventRepository.deleteAll()
         exchangeOrderRepository.deleteAll()
         walletRepository.deleteAll()
+        simulatedBankBalanceRepository.deleteAll()
         accountRepository.deleteAll()
+        internalAccountRepository.deleteAll()
         jdbcTemplate.update("delete from \"user\"")
         jdbcTemplate.update("delete from currency")
         jdbcTemplate.update("delete from bank")
@@ -158,39 +172,41 @@ class ExchangeSettlementRollbackIntegrationTest {
         )
 
         jdbcTemplate.update(
-            "insert into wallet (user_id, currency_id, balance, is_connected) values (?, ?, ?, ?)",
+            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
             USER_ID,
             KRW_ID,
-            USER_KRW_BALANCE,
-            false
+            USER_KRW_BALANCE
         )
         jdbcTemplate.update(
-            "insert into account (user_id, bank_id, currency_id, account_num, balance, is_active, created_at) " +
-                "values (?, ?, ?, ?, ?, ?, current_timestamp)",
+            "insert into account (user_id, bank_id, currency_id, account_num, is_active, created_at) " +
+                "values (?, ?, ?, ?, ?, current_timestamp)",
             USER_ID,
             1L,
             KRW_ID,
             USER_ACCOUNT_NUM,
-            BigDecimal("500000"),
             true
         )
         val userAccountId = accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.id!!
         jdbcTemplate.update(
-            "update wallet set account_id = ?, is_connected = true where user_id = ? and currency_id = ?",
+            "insert into simulated_bank_balance (account_id, balance) values (?, ?)",
+            userAccountId,
+            BigDecimal("500000")
+        )
+        jdbcTemplate.update(
+            "update wallet set account_id = ? where user_id = ? and currency_id = ?",
             userAccountId,
             USER_ID,
             KRW_ID
         )
         jdbcTemplate.update(
-            "insert into wallet (user_id, currency_id, balance, is_connected) values (?, ?, ?, ?)",
+            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
             USER_ID,
             USD_ID,
-            USER_USD_BALANCE,
-            false
+            USER_USD_BALANCE
         )
-        insertCompanyAccount(KRW_ID, "222222-22-222222", COMPANY_KRW_BALANCE)
-        insertCompanyAccount(USD_ID, "444444-44-444444", COMPANY_USD_BALANCE)
-        insertCompanyAccount(KRW_ID, "111111-11-111111", COMMISSION_BALANCE)
+        insertCompanyAccount(CompanyAccount.KRW_ACCOUNT, COMPANY_KRW_BALANCE)
+        insertCompanyAccount(CompanyAccount.USD_ACCOUNT, COMPANY_USD_BALANCE)
+        insertCompanyAccount(CompanyAccount.COMMISSION_ACCOUNT, COMMISSION_BALANCE)
     }
 
     @Test
@@ -215,11 +231,11 @@ class ExchangeSettlementRollbackIntegrationTest {
             exchangeOrderService.processQueuedOrder(order.id!!)
         }
 
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe USER_KRW_BALANCE
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, USD_ID)!!.balance shouldBe USER_USD_BALANCE
-        companyBalance(KRW_ID, "222222-22-222222") shouldBe COMPANY_KRW_BALANCE
-        companyBalance(USD_ID, "444444-44-444444") shouldBe COMPANY_USD_BALANCE
-        companyBalance(KRW_ID, "111111-11-111111") shouldBe COMMISSION_BALANCE
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
+        walletBalance(USD_ID).compareTo(USER_USD_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(COMPANY_KRW_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.USD_ACCOUNT).compareTo(COMPANY_USD_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(COMMISSION_BALANCE) shouldBe 0
         transactionRepository.count() shouldBe 0L
         exchangeLedgerRepository.count() shouldBe 0L
         walletFxHistoryRepository.count() shouldBe 0L
@@ -248,13 +264,16 @@ class ExchangeSettlementRollbackIntegrationTest {
         }
         settlements.count { it.isSuccess } shouldBe 10
 
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe BigDecimal("0.00")
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, USD_ID)!!.balance shouldBe BigDecimal("869.20")
+        walletBalance(KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
+        walletBalance(USD_ID).compareTo(BigDecimal("869.20")) shouldBe 0
         exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 10
         outboxEventRepository.count() shouldBe 10L
         transactionRepository.count() shouldBe 20L
         exchangeLedgerRepository.count() shouldBe 10L
         walletFxHistoryRepository.count() shouldBe 30L
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(BigDecimal("999000030")) shouldBe 0
+        companyBalance(CompanyAccount.USD_ACCOUNT).compareTo(BigDecimal("1000769.20")) shouldBe 0
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal("30")) shouldBe 0
     }
 
     @Test
@@ -317,7 +336,7 @@ class ExchangeSettlementRollbackIntegrationTest {
             USER_ID, KRW_ID, ExchangeOrderRepository.RESERVING_STATUSES
         ).compareTo(BigDecimal.ZERO) shouldBe 0
         transactionRepository.count() shouldBe 0L
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe USER_KRW_BALANCE
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
     }
 
     @Test
@@ -368,11 +387,29 @@ class ExchangeSettlementRollbackIntegrationTest {
         deliveries.forEach {
             it.getOrThrow().status shouldBe org.example.backend.enums.PublicOrderStatus.COMPLETED
         }
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe BigDecimal("900000.00")
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, USD_ID)!!.balance shouldBe BigDecimal("176.92")
+        walletBalance(KRW_ID).compareTo(BigDecimal("900000")) shouldBe 0
+        walletBalance(USD_ID).compareTo(BigDecimal("176.92")) shouldBe 0
         transactionRepository.count() shouldBe 2L
         exchangeLedgerRepository.count() shouldBe 1L
         walletFxHistoryRepository.count() shouldBe 3L
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(BigDecimal("999900003")) shouldBe 0
+        companyBalance(CompanyAccount.USD_ACCOUNT).compareTo(BigDecimal("1000076.92")) shouldBe 0
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal("3")) shouldBe 0
+    }
+
+    @Test
+    fun `sell exchanges company assets and credits fee revenue without moving cash twice`() {
+        val order = exchangeOrderService.requestSellOrder(USER_ID, "USD", BigDecimal("10"), "sell-assets")
+
+        exchangeOrderService.processQueuedOrder(order.id)
+
+        walletBalance(USD_ID).compareTo(BigDecimal("90")) shouldBe 0
+        walletBalance(KRW_ID).compareTo(BigDecimal("1012999")) shouldBe 0
+        companyBalance(CompanyAccount.USD_ACCOUNT).compareTo(COMPANY_USD_BALANCE.subtract(BigDecimal("10"))) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(COMPANY_KRW_BALANCE.add(BigDecimal("13000"))) shouldBe 0
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal.ONE) shouldBe 0
+        transactionRepository.count() shouldBe 2L
+        exchangeLedgerRepository.count() shouldBe 1L
     }
 
     @Test
@@ -388,16 +425,17 @@ class ExchangeSettlementRollbackIntegrationTest {
             }
             withdrawal.errorCode shouldBe ErrorCode.INVALID_TRANSFER_AMOUNT.code
         }
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe USER_KRW_BALANCE
-        accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.balance shouldBe BigDecimal("500000.00")
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
+        simulatedBankBalance().compareTo(BigDecimal("500000")) shouldBe 0
         jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 0L
     }
 
     @Test
     fun `deposit moves balance and records it once`() {
-        walletService.depositFromAccount(USER_ID, KRW_ID, BigDecimal("100000")) shouldBe BigDecimal("1100000.00")
-        walletRepository.findByUserIdAndCurrencyId(USER_ID, KRW_ID)!!.balance shouldBe BigDecimal("1100000.00")
-        accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.balance shouldBe BigDecimal("400000.00")
+        walletService.depositFromAccount(USER_ID, KRW_ID, BigDecimal("100000")).compareTo(BigDecimal("1100000")) shouldBe 0
+        walletBalance(KRW_ID).compareTo(BigDecimal("1100000")) shouldBe 0
+        simulatedBankBalance().compareTo(BigDecimal("400000")) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(COMPANY_KRW_BALANCE.add(BigDecimal("100000"))) shouldBe 0
         jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 1L
     }
 
@@ -436,9 +474,26 @@ class ExchangeSettlementRollbackIntegrationTest {
             walletService.withdrawToAccount(USER_ID, KRW_ID, USER_KRW_BALANCE)
         }.errorCode shouldBe ErrorCode.INSUFFICIENT_WALLET_BALANCE.code
 
-        walletService.withdrawToAccount(USER_ID, KRW_ID, BigDecimal("900000")) shouldBe BigDecimal("100000.00")
-        accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.balance shouldBe BigDecimal("1400000.00")
+        walletService.withdrawToAccount(USER_ID, KRW_ID, BigDecimal("900000")).compareTo(BigDecimal("100000")) shouldBe 0
+        simulatedBankBalance().compareTo(BigDecimal("1400000")) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(COMPANY_KRW_BALANCE.subtract(BigDecimal("900000"))) shouldBe 0
         jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 1L
+    }
+
+    @Test
+    fun `withdrawal with insufficient company cash leaves all balances unchanged`() {
+        val cash = internalAccountRepository.findByCode(CompanyAccount.KRW_ACCOUNT)!!
+        cash.balance = BigDecimal.ZERO
+        internalAccountRepository.saveAndFlush(cash)
+
+        assertThrows<UserException> {
+            walletService.withdrawToAccount(USER_ID, KRW_ID, BigDecimal.ONE)
+        }.errorCode shouldBe ErrorCode.COMPANY_LIQUIDITY_INSUFFICIENT.code
+
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(BigDecimal.ZERO) shouldBe 0
+        simulatedBankBalance().compareTo(BigDecimal("500000")) shouldBe 0
+        jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 0L
     }
 
     @Test
@@ -492,10 +547,33 @@ class ExchangeSettlementRollbackIntegrationTest {
 
         val account = accountRepository.findByBankIdAndAccountNum(1L, "new-account")!!
         account.userId shouldBe USER_ID
-        account.balance.compareTo(BigDecimal.ZERO) shouldBe 0
+        simulatedBankBalanceRepository.findById(account.id!!).orElseThrow().balance.compareTo(BigDecimal.ZERO) shouldBe 0
         assertThrows<UserException> {
             accountService.createAccount(COMPANY_USER_ID, AccountCreateRequest(1L, KRW_ID, "company-forged"))
         }.errorCode shouldBe ErrorCode.INCORRECT_OWNER.code
+    }
+
+    @Test
+    fun `wallet and external account uniqueness is enforced by the database`() {
+        assertThrows<DataIntegrityViolationException> {
+            jdbcTemplate.update(
+                "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
+                USER_ID,
+                KRW_ID,
+                BigDecimal.ZERO
+            )
+        }
+        assertThrows<DataIntegrityViolationException> {
+            jdbcTemplate.update(
+                "insert into account (user_id, bank_id, currency_id, account_num, is_active, created_at) " +
+                    "values (?, ?, ?, ?, ?, current_timestamp)",
+                USER_ID,
+                1L,
+                KRW_ID,
+                USER_ACCOUNT_NUM,
+                true
+            )
+        }
     }
 
     private fun <T> runConcurrently(taskCount: Int, action: (Int) -> T): List<Result<T>> {
@@ -519,21 +597,21 @@ class ExchangeSettlementRollbackIntegrationTest {
         }
     }
 
-    private fun insertCompanyAccount(currencyId: Long, accountNum: String, balance: BigDecimal) {
-        jdbcTemplate.update(
-            "insert into account (user_id, bank_id, currency_id, account_num, balance, is_active, created_at) " +
-                "values (?, ?, ?, ?, ?, ?, current_timestamp)",
-            COMPANY_USER_ID,
-            1L,
-            currencyId,
-            accountNum,
-            balance,
-            true
-        )
+    private fun insertCompanyAccount(code: CompanyAccount, balance: BigDecimal) {
+        internalAccountRepository.save(InternalAccount(code = code, currencyId = code.currencyId, balance = balance))
     }
 
-    private fun companyBalance(currencyId: Long, accountNum: String): BigDecimal {
-        return accountRepository.findByCurrencyIdAndAccountNum(currencyId, accountNum)!!.balance
+    private fun companyBalance(code: CompanyAccount): BigDecimal {
+        return internalAccountRepository.findByCode(code)!!.balance
+    }
+
+    private fun walletBalance(currencyId: Long): BigDecimal {
+        return walletRepository.findByUserIdAndCurrencyId(USER_ID, currencyId)!!.balance
+    }
+
+    private fun simulatedBankBalance(): BigDecimal {
+        val accountId = accountRepository.findByBankIdAndAccountNum(1L, USER_ACCOUNT_NUM)!!.id!!
+        return simulatedBankBalanceRepository.findById(accountId).orElseThrow().balance
     }
 
     @TestConfiguration

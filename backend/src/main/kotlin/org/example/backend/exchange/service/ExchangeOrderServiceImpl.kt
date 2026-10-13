@@ -14,9 +14,9 @@ import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exchange.domain.OutboxEvent
 import org.example.backend.enums.OutboxEventType
 import org.example.backend.finance.domain.Currency
+import org.example.backend.finance.domain.InternalAccount
 import org.example.backend.finance.repository.CurrencyRepository
-import org.example.backend.user.domain.Account
-import org.example.backend.user.repository.AccountRepository
+import org.example.backend.finance.repository.InternalAccountRepository
 import org.example.backend.user.service.WalletService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -36,7 +36,7 @@ class ExchangeOrderServiceImpl(
     private val ledgerService: ExchangeLedgerService,
     private val currencyRepository: CurrencyRepository,
     private val walletService: WalletService,
-    private val accountRepository: AccountRepository,
+    private val internalAccountRepository: InternalAccountRepository,
     private val requestValidator: ExchangeOrderRequestValidator,
     private val outboxEventRepository: OutboxEventRepository
 ) : ExchangeOrderService {
@@ -527,15 +527,17 @@ class ExchangeOrderServiceImpl(
             .orElseThrow { IllegalStateException("Currency not found: $currencyId") }
     }
 
-    private fun findCompanyAccount(currencyId: Long): Account {
+    private fun findCompanyAccount(currencyId: Long): InternalAccount {
         val meta = CompanyAccount.ofCurrencyId(currencyId)
-        return accountRepository.findByCurrencyIdAndAccountNum(currencyId, meta.accountNum)
+        return internalAccountRepository.findByCode(meta)
+            ?.takeIf { it.currencyId == currencyId }
             ?: error("Company account not found: currencyId=$currencyId")
     }
 
-    private fun findCommissionAccount(): Account {
+    private fun findCommissionAccount(): InternalAccount {
         val meta = CompanyAccount.COMMISSION_ACCOUNT
-        return accountRepository.findByCurrencyIdAndAccountNum(meta.currencyId, meta.accountNum)
+        return internalAccountRepository.findByCode(meta)
+            ?.takeIf { it.currencyId == meta.currencyId }
             ?: error("Company commission account not found")
     }
 

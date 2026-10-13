@@ -6,8 +6,10 @@ import org.example.backend.exception.UserException
 import org.example.backend.finance.repository.BankRepository
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.user.domain.Account
+import org.example.backend.user.domain.SimulatedBankBalance
 import org.example.backend.user.dto.AccountCreateRequest
 import org.example.backend.user.repository.AccountRepository
+import org.example.backend.user.repository.SimulatedBankBalanceRepository
 import org.example.backend.user.repository.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class AccountServiceImpl(
     private val accountRepository: AccountRepository,
+    private val simulatedBankBalanceRepository: SimulatedBankBalanceRepository,
     private val userRepository: UserRepository,
     private val bankRepository: BankRepository,
     private val currencyRepository: CurrencyRepository
@@ -35,7 +38,7 @@ class AccountServiceImpl(
             throw UserException(ErrorCode.DUPLICATED_ACCOUNT)
         }
 
-        accountRepository.save(
+        val account = accountRepository.save(
             Account(
                 userId = userId,
                 bankId = request.bankId,
@@ -43,5 +46,6 @@ class AccountServiceImpl(
                 accountNum = request.accountNum
             )
         )
+        simulatedBankBalanceRepository.save(SimulatedBankBalance(accountId = account.id!!))
     }
 }

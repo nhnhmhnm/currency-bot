@@ -90,7 +90,7 @@ class UserServiceImplTest : FunSpec({
         created.shouldHaveSize(3)
         created.map { it.userId }.distinct() shouldBe listOf(1L)
         created.map { it.currencyId }.sorted() shouldBe listOf(1L, 2L, 3L)
-        created.forEach { it.isConnected shouldBe false }
+        created.forEach { it.accountId shouldBe null }
 
         verifySequence {
             userRepository.existsByDevice("test-device")

@@ -9,11 +9,14 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import java.math.BigDecimal
+import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "account")
+@Table(
+  name = "account",
+  uniqueConstraints = [UniqueConstraint(name = "uk_account_bank_number", columnNames = ["bank_id", "account_num"])]
+)
 class Account(
   @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
   val id: Long? = null,
@@ -33,9 +36,6 @@ class Account(
 
   @Column(name = "account_num", nullable = false, length = 50)
   val accountNum: String,
-
-  @Column(name = "balance")
-  var balance: BigDecimal = BigDecimal.ZERO,
 
   @Column(name = "is_active")
   var isActive: Boolean = true,

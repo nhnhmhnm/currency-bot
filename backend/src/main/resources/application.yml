@@ -12,3 +12,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+app:
+  bank:
+    simulation-enabled: ${APP_BANK_SIMULATION_ENABLED:false}

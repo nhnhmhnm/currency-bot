@@ -2,10 +2,12 @@ package org.example.backend.user.domain
 
 import jakarta.persistence.*
 import java.math.BigDecimal
-import java.time.LocalDateTime
 
 @Entity
-@Table(name = "wallet")
+@Table(
+    name = "wallet",
+    uniqueConstraints = [UniqueConstraint(name = "uk_wallet_user_currency", columnNames = ["user_id", "currency_id"])]
+)
 class Wallet(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
@@ -19,9 +21,6 @@ class Wallet(
     @Column(name = "account_id")
     var accountId: Long? = null,
 
-    @Column(name = "balance")
-    var balance: BigDecimal = BigDecimal.ZERO,
-
-    @Column(name = "is_connected")
-    var isConnected: Boolean = false
+    @Column(name = "balance", nullable = false, precision = 24, scale = 8)
+    var balance: BigDecimal = BigDecimal.ZERO
 )

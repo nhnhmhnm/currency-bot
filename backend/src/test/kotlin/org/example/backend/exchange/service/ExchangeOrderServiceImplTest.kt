@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.example.backend.enums.ExchangeType
+import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
 import org.example.backend.enums.PublicOrderStatus
@@ -18,9 +19,9 @@ import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.finance.domain.Currency
+import org.example.backend.finance.domain.InternalAccount
 import org.example.backend.finance.repository.CurrencyRepository
-import org.example.backend.user.domain.Account
-import org.example.backend.user.repository.AccountRepository
+import org.example.backend.finance.repository.InternalAccountRepository
 import org.example.backend.user.service.WalletService
 import java.math.BigDecimal
 import java.util.Optional
@@ -32,7 +33,7 @@ class ExchangeOrderServiceImplTest : FunSpec({
     val ledgerService = mockk<ExchangeLedgerService>(relaxed = true)
     val currencyRepository = mockk<CurrencyRepository>()
     val walletService = mockk<WalletService>()
-    val accountRepository = mockk<AccountRepository>()
+    val internalAccountRepository = mockk<InternalAccountRepository>()
     val requestValidator = mockk<ExchangeOrderRequestValidator>()
     val outboxEventRepository = mockk<OutboxEventRepository>(relaxed = true)
 
@@ -43,7 +44,7 @@ class ExchangeOrderServiceImplTest : FunSpec({
         ledgerService = ledgerService,
         currencyRepository = currencyRepository,
         walletService = walletService,
-        accountRepository = accountRepository,
+        internalAccountRepository = internalAccountRepository,
         requestValidator = requestValidator,
         outboxEventRepository = outboxEventRepository
     )
@@ -77,26 +78,20 @@ class ExchangeOrderServiceImplTest : FunSpec({
             orderType = OrderType.BUY,
             status = OrderStatus.PROCESSING
         )
-        val companyKrwAccount = Account(
+        val companyKrwAccount = InternalAccount(
             id = 101L,
-            userId = 1L,
-            bankId = 1L,
+            code = CompanyAccount.KRW_ACCOUNT,
             currencyId = krw.id,
-            accountNum = "222222-22-222222"
         )
-        val companyUsdAccount = Account(
+        val companyUsdAccount = InternalAccount(
             id = 102L,
-            userId = 1L,
-            bankId = 4L,
+            code = CompanyAccount.USD_ACCOUNT,
             currencyId = usd.id,
-            accountNum = "444444-44-444444"
         )
-        val commissionAccount = Account(
+        val commissionAccount = InternalAccount(
             id = 103L,
-            userId = 1L,
-            bankId = 1L,
+            code = CompanyAccount.COMMISSION_ACCOUNT,
             currencyId = krw.id,
-            accountNum = "111111-11-111111"
         )
 
         every { currencyRepository.findByCode("KRW") } returns krw
@@ -109,13 +104,13 @@ class ExchangeOrderServiceImplTest : FunSpec({
             exchangeService.calculateExchange(krw, usd, bestBuy.bestRate, BigDecimal("99997"))
         } returns (BigDecimal("76.92") to BigDecimal.ZERO)
         every {
-            accountRepository.findByCurrencyIdAndAccountNum(krw.id, "222222-22-222222")
+            internalAccountRepository.findByCode(CompanyAccount.KRW_ACCOUNT)
         } returns companyKrwAccount
         every {
-            accountRepository.findByCurrencyIdAndAccountNum(usd.id, "444444-44-444444")
+            internalAccountRepository.findByCode(CompanyAccount.USD_ACCOUNT)
         } returns companyUsdAccount
         every {
-            accountRepository.findByCurrencyIdAndAccountNum(krw.id, "111111-11-111111")
+            internalAccountRepository.findByCode(CompanyAccount.COMMISSION_ACCOUNT)
         } returns commissionAccount
         every { walletService.userToCompany(any(), any(), any(), any(), any()) } returns BigDecimal.ZERO
         every { walletService.bankToCompany(any(), any(), any()) } returns BigDecimal.ZERO

@@ -2,16 +2,20 @@ package org.example.backend.user.service
 
 import org.example.backend.enums.TransferReason
 import org.example.backend.enums.WalletTransactionType
+import org.example.backend.enums.CompanyAccount
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.repository.CurrencyRepository
+import org.example.backend.finance.repository.InternalAccountRepository
 import org.example.backend.user.dto.BalanceRef
 import org.example.backend.user.dto.DepositWithdrawalCommand
 import org.example.backend.user.dto.MoneyMovementCommand
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.UserRepository
 import org.example.backend.user.repository.WalletRepository
+import org.example.backend.user.repository.SimulatedBankBalanceRepository
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -20,11 +24,14 @@ import java.math.BigDecimal
 class WalletServiceImpl(
     private val walletRepository: WalletRepository,
     private val accountRepository: AccountRepository,
+    private val internalAccountRepository: InternalAccountRepository,
+    private val simulatedBankBalanceRepository: SimulatedBankBalanceRepository,
     private val userRepository: UserRepository,
     private val currencyRepository: CurrencyRepository,
     private val exchangeOrderRepository: ExchangeOrderRepository,
     private val depositWithdrawalService: DepositWithdrawalService,
-    private val moneyMovementService: MoneyMovementService
+    private val moneyMovementService: MoneyMovementService,
+    @Value("\${app.bank.simulation-enabled:false}") private val bankSimulationEnabled: Boolean
 ) : WalletService {
 
     @Transactional
@@ -44,7 +51,6 @@ class WalletServiceImpl(
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
         wallet.accountId = account.id
-        wallet.isConnected = true
 
         walletRepository.save(wallet)
     }
@@ -55,20 +61,26 @@ class WalletServiceImpl(
 
     @Transactional
     override fun depositFromAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
+        requireBankSimulation()
         validateTransferAmount(currencyId, amount)
         lockActiveUser(userId)
         val wallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
-        val userAccount = lockConnectedAccount(userId, currencyId, wallet.accountId, wallet.isConnected)
+        val userAccount = lockConnectedAccount(userId, currencyId, wallet.accountId)
+        val cashAccount = lockCashAccount(currencyId)
+        val bankBalance = simulatedBankBalanceRepository.findByAccountIdForUpdate(userAccount.id!!)
+            ?: throw UserException(ErrorCode.SIMULATED_BANK_BALANCE_NOT_FOUND)
 
-        if (userAccount.balance < amount) {
+        if (bankBalance.balance < amount) {
             throw UserException(ErrorCode.INSUFFICIENT_ACCOUNT_BALANCE)
         }
 
-        userAccount.balance = userAccount.balance.minus(amount)
+        bankBalance.balance = bankBalance.balance.minus(amount)
+        cashAccount.balance = cashAccount.balance.plus(amount)
         wallet.balance = wallet.balance.plus(amount)
 
-        accountRepository.save(userAccount)
+        simulatedBankBalanceRepository.save(bankBalance)
+        internalAccountRepository.save(cashAccount)
         walletRepository.save(wallet)
 
         depositWithdrawalService.record(
@@ -86,12 +98,16 @@ class WalletServiceImpl(
 
     @Transactional
     override fun withdrawToAccount(userId: Long, currencyId: Long, amount: BigDecimal): BigDecimal {
+        requireBankSimulation()
         validateTransferAmount(currencyId, amount)
         lockActiveUser(userId)
         val wallet = walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, currencyId)
             ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
 
-        val userAccount = lockConnectedAccount(userId, currencyId, wallet.accountId, wallet.isConnected)
+        val userAccount = lockConnectedAccount(userId, currencyId, wallet.accountId)
+        val cashAccount = lockCashAccount(currencyId)
+        val bankBalance = simulatedBankBalanceRepository.findByAccountIdForUpdate(userAccount.id!!)
+            ?: throw UserException(ErrorCode.SIMULATED_BANK_BALANCE_NOT_FOUND)
         val reservedAmount = exchangeOrderRepository.sumReservedFromAmount(
             userId,
             currencyId,
@@ -100,12 +116,17 @@ class WalletServiceImpl(
         if (wallet.balance.subtract(reservedAmount) < amount) {
             throw UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
         }
+        if (cashAccount.balance < amount) {
+            throw UserException(ErrorCode.COMPANY_LIQUIDITY_INSUFFICIENT)
+        }
 
         wallet.balance = wallet.balance.minus(amount)
-        userAccount.balance = userAccount.balance.plus(amount)
+        cashAccount.balance = cashAccount.balance.minus(amount)
+        bankBalance.balance = bankBalance.balance.plus(amount)
 
         walletRepository.save(wallet)
-        accountRepository.save(userAccount)
+        internalAccountRepository.save(cashAccount)
+        simulatedBankBalanceRepository.save(bankBalance)
 
         depositWithdrawalService.record(
             DepositWithdrawalCommand(
@@ -140,8 +161,18 @@ class WalletServiceImpl(
         }
     }
 
-    private fun lockConnectedAccount(userId: Long, currencyId: Long, accountId: Long?, connected: Boolean) =
-        if (!connected || accountId == null) {
+    private fun requireBankSimulation() {
+        if (!bankSimulationEnabled) throw UserException(ErrorCode.BANK_INTEGRATION_UNAVAILABLE)
+    }
+
+    private fun lockCashAccount(currencyId: Long) =
+        internalAccountRepository.findByCodeForUpdate(CompanyAccount.ofCurrencyId(currencyId))
+            ?.also {
+                if (it.currencyId != currencyId) throw UserException(ErrorCode.CURRENCY_MISMATCH)
+            } ?: throw UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND)
+
+    private fun lockConnectedAccount(userId: Long, currencyId: Long, accountId: Long?) =
+        if (accountId == null) {
             throw UserException(ErrorCode.ACCOUNT_NOT_CONNECTED)
         } else {
             val account = accountRepository.findByIdForUpdate(accountId)
@@ -160,7 +191,7 @@ class WalletServiceImpl(
 
     @Transactional
     override fun companyToCompany(fromAccountId: Long, toAccountId: Long, amount: BigDecimal): BigDecimal {
-        val fromAccount = accountRepository.findById(fromAccountId)
+        val fromAccount = internalAccountRepository.findById(fromAccountId)
             .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
 
         return moneyMovementService.transfer(
@@ -177,7 +208,7 @@ class WalletServiceImpl(
 
     @Transactional
     override fun bankToCompany(accountId: Long, bankId: Long, amount: BigDecimal): BigDecimal {
-        val companyAccount = accountRepository.findById(accountId)
+        val companyAccount = internalAccountRepository.findById(accountId)
             .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
 
         val source = if (amount > BigDecimal.ZERO) {
