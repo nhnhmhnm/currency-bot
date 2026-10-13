@@ -2,7 +2,7 @@
 
 목표: 입금·환전·출금을 정확하게 처리하고, 중복 요청이나 장애가 발생해도 자금과 기록을 복구할 수 있게 한다.
 
-상태: 1~3번은 구현하고 H2·mock 테스트로 검증했다. 4~8번은 계획이며 실제 MySQL·Redis 장애/성능 검증은 아직 하지 않았다. 각 항목 구현 후 테스트 결과·측정값·커밋을 기록한다. 기대 효과를 완료 실적으로 표시하지 않는다.
+상태: 1~3번은 구현하고 H2·mock 테스트로 검증했다. MySQL·Redis 실환경 검증을 일부 추가했으며 4~8번은 계획이다. 실제 프로세스 강제 종료·Redis 재시작·성능·운영 스키마 전환은 아직 검증하지 않았다. 각 항목 구현 후 테스트 결과·측정값·커밋을 기록한다. 기대 효과를 완료 실적으로 표시하지 않는다.
 
 ## 1. 일반 입출금 검증과 계좌 접근 통제
 
@@ -11,6 +11,7 @@
 - **결과 검증:** 음수 입출금과 무권한 계좌 생성을 거절하고, 환전·출금 동시 실행에서도 갱신 유실과 음수 가용 잔액이 없어야 한다.
 - **코드 근거:** [WalletServiceImpl](../backend/src/main/kotlin/org/example/backend/user/service/WalletServiceImpl.kt), [SecurityConfig](../backend/src/main/kotlin/org/example/backend/common/config/SecurityConfig.kt), [AccountServiceImpl](../backend/src/main/kotlin/org/example/backend/user/service/AccountServiceImpl.kt).
 - **실제 결과 (H2):** 비인증 계좌 생성 거절, 인증 사용자 명의·초기 잔액 0 생성, 양수/통화 자릿수·연결 계좌 소유권/활성/통화 검사, 사용자→지갑→계좌 잠금 및 활성 주문 예약액을 반영한 출금을 구현했다. 기존의 의미 없는 회사 계좌 왕복 변경은 제거했다. 테스트 자금은 통합 테스트 fixture에만 넣었다. 구현 커밋 `0354955`. `backend/gradlew.bat test --no-daemon` 전체 58개 통과(2026-10-13). 실제 은행 잔액 검증·MySQL 잠금과 회사 자산/고객 채무 회계 처리는 3·4·8번 범위로 남는다.
+- **추가 검증 (MySQL 9.4):** `REPEATABLE-READ`에서 통화 조회가 사용자 잠금보다 앞서면 오래된 예약액·일일 한도를 읽어 초과 주문이 접수되는 결함을 발견했다. 주문 접수와 입출금에서 사용자 잠금을 첫 DB 조회로 이동한 뒤 동시 주문 11건, 일일 한도 경합 6건, 주문·출금 경합 테스트가 통과했다. 실제 은행 잔액이 아닌 로컬 모의 잔액 검증이며 잠금 순서 전체의 데드락·부하 검증은 4·8번에서 계속한다.
 
 ## 2. Worker 실패 처리와 중복 실행 방지
 
@@ -20,6 +21,7 @@
 - **결과 검증:** 커밋 전후 Worker 종료, ACK 실패, 실패 기록 저장 실패, 중복 전달에도 자금은 한 번만 반영되고 접수 주문을 추적·복구할 수 있어야 한다.
 - **코드 근거:** [OrderWorker](../backend/src/main/kotlin/org/example/backend/exchange/service/OrderWorker.kt), [RedisOrderQueue](../backend/src/main/kotlin/org/example/backend/common/util/RedisOrderQueue.kt).
 - **실제 결과 (H2·mock):** 구현 커밋 `a31990e`. 정산 실패만 DB에 재시도 횟수·다음 시각(최대 3회, 2/4초 지연) 또는 최종 FAILED를 확정한 후 Redis 메시지를 이동한다. ACK 실패는 재정산 실패로 세지 않는다. List claim의 lease 소유권 확인, 지연 큐, 만료 lease 복구, 60초 이상 미완료 주문의 DB 기준 재발행을 추가했다. 동일 주문 동시 전달·늦은 실패 보고·재시도 중복 보고 등을 포함해 `backend/gradlew.bat test --no-daemon --rerun-tasks` 전체 66개 통과(2026-10-13). 실제 Redis Lua/Worker 강제 종료 및 MySQL 잠금은 미검증이다. 전표 유니크 제약은 6번, Streams 전환은 7번, 운영 스키마 마이그레이션은 8번에서 검증한다.
+- **추가 검증 (MySQL·Redis):** 실제 Redis에서 Lua claim·lease 소유권·오래된 ACK 거절·지연 재시도와 Worker 중복 전달을 확인했다. claim 후 미정산 상태와 DB 정산 커밋 후 ACK 전 상태를 Redis에 재현해 복구 후 자금·거래 기록이 한 번만 반영됨을 확인했다. [실행 스크립트](../backend/scripts/verify-local-infra.ps1)는 전용 `currency_bot_integration_test` 스키마와 비어 있는 Redis DB 15만 사용한다. OS 프로세스 강제 종료·Redis 재시작·전표 유니크 제약(6번)·Streams pending(7번)은 아직 검증하지 않았다.
 
 ## 3. 지갑·외부 계좌·회계계정 구분
 
@@ -62,11 +64,11 @@
 
 ## 8. 외부 연계와 실제 결과 검증
 
-- **현재 한계:** H2·mock 테스트만으로 실제 MySQL 잠금과 Redis 장애 복구를 입증할 수 없다. 현재 모의 은행 잔액 처리는 실제 은행 연동과 구분해야 한다.
+- **현재 한계:** 로컬 MySQL 잠금과 Redis lease 일부를 검증했지만 프로세스·Redis 강제 종료, 실제 은행 연동, 운영 스키마 전환과 성능은 입증하지 못했다. 모의 은행 잔액 처리는 실제 은행 연동과 구분해야 한다.
 - **개선·근거:** 실제 MySQL·Redis 통합 테스트와 모의 은행을 사용한다. 은행 요청 ID, 결과 조회, 대사를 구현해 은행 성공 후 응답 타임아웃을 재현한다. 외부 결과 불명은 바로 실패 확정하거나 예약 해제하지 않는다.
 - **필수 검증:** 단계별 롤백, 잔액 초과 동시 주문, 중복 요청, Worker 강제 종료, 한도·JPY 고시 단위·반올림 경계, 대사 배치 재실행. 수동 재처리는 권한·사유·결과를 감사 기록으로 남긴다.
 - **배포 기준:** 스키마를 단계적으로 추가하고 기존 활성 주문·예약·큐를 대사 후 전환한다. 과거 요약으로 상세 분개를 임의 복원하지 않는다. 기존 주문 소진과 롤백 절차를 검증한다.
-- **실제 결과 기록:** 각 항목 완료 시 `커밋 / 테스트 명령·환경 / 통과·실패 / 성능·복구 측정값 / 남은 한계`를 추가한다. 현재는 미구현·미검증이며 성능 수치는 없다. MSA 확장보다 이 증거를 우선한다.
+- **실제 결과 기록:** 수정 커밋 `da7f3a0`, 테스트 커밋 `79c840e`. `backend/scripts/verify-local-infra.ps1`로 MySQL 9.4 (`REPEATABLE-READ`)·Redis에서 18개 통과, `backend/gradlew.bat test --no-daemon --rerun-tasks`로 H2·mock 70개 통과·실환경 전용 3개 건너뜀(2026-10-13). 테스트 후 전용 MySQL 스키마 테이블 수와 Redis DB 15 키 수는 모두 0이다. OS 강제 종료·Redis 재시작·성능 수치는 아직 없다. MSA 확장보다 이 증거를 우선한다.
 
 ## 9. 최종 처리 흐름
 
