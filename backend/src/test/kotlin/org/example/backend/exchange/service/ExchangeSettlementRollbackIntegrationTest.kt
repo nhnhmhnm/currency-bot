@@ -2,6 +2,7 @@ package org.example.backend.exchange.service
 
 import io.kotest.matchers.shouldBe
 import org.example.backend.auth.dto.UserPrincipal
+import org.example.backend.common.util.RedisOrderQueue
 import org.example.backend.enums.ExchangeType
 import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.OrderStatus
@@ -29,6 +30,7 @@ import org.example.backend.user.service.AccountService
 import org.example.backend.user.service.WalletService
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -38,15 +40,21 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.http.MediaType
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.sql.DriverManager
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -113,6 +121,15 @@ class ExchangeSettlementRollbackIntegrationTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
 
+    @Autowired
+    private lateinit var redisOrderQueue: RedisOrderQueue
+
+    @Autowired
+    private lateinit var orderWorker: OrderWorker
+
+    @Autowired
+    private lateinit var redisTemplate: StringRedisTemplate
+
     @BeforeEach
     fun setUp() {
         ledgerService.failOnRecord = false
@@ -126,7 +143,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         simulatedBankBalanceRepository.deleteAll()
         accountRepository.deleteAll()
         internalAccountRepository.deleteAll()
-        jdbcTemplate.update("delete from \"user\"")
+        jdbcTemplate.update("delete from $quotedUserTable")
         jdbcTemplate.update("delete from currency")
         jdbcTemplate.update("delete from bank")
 
@@ -149,7 +166,7 @@ class ExchangeSettlementRollbackIntegrationTest {
             BigDecimal.ONE
         )
         jdbcTemplate.update(
-            "insert into \"user\" (id, device, password, name, phone, type, is_active, created_at) " +
+            "insert into $quotedUserTable (id, device, password, name, phone, type, is_active, created_at) " +
                 "values (?, ?, ?, ?, ?, ?, ?, current_timestamp)",
             COMPANY_USER_ID,
             "company-device",
@@ -160,7 +177,7 @@ class ExchangeSettlementRollbackIntegrationTest {
             true
         )
         jdbcTemplate.update(
-            "insert into \"user\" (id, device, password, name, phone, type, is_active, created_at) " +
+            "insert into $quotedUserTable (id, device, password, name, phone, type, is_active, created_at) " +
                 "values (?, ?, ?, ?, ?, ?, ?, current_timestamp)",
             USER_ID,
             "user-device",
@@ -398,6 +415,114 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `real Redis worker redelivery settles a MySQL order only once`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        val existingKeys = redisTemplate.keys("*").orEmpty()
+        check(existingKeys.isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+
+        try {
+            val order = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "real-worker")
+            val eventId = outboxEventRepository.findAll().single().id!!
+            redisOrderQueue.enqueue(eventId, order.id) shouldBe true
+
+            orderWorker.processQueue()
+            exchangeOrderRepository.findById(order.id).orElseThrow().status shouldBe OrderStatus.SETTLED
+            redisOrderQueue.enqueue(eventId + 100000, order.id) shouldBe true
+            orderWorker.processQueue()
+
+            walletBalance(KRW_ID).compareTo(BigDecimal("900000")) shouldBe 0
+            walletBalance(USD_ID).compareTo(BigDecimal("176.92")) shouldBe 0
+            transactionRepository.count() shouldBe 2L
+            exchangeLedgerRepository.count() shouldBe 1L
+            redisOrderQueue.claim() shouldBe null
+        } finally {
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    @Test
+    fun `real Redis lease rejects stale ACK and recovers deferred messages`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+
+        try {
+            redisOrderQueue.enqueue(777L, 444L) shouldBe true
+            redisOrderQueue.enqueue(777L, 444L) shouldBe false
+            val first = redisOrderQueue.claim()!!
+            redisOrderQueue.claim() shouldBe null
+            redisOrderQueue.acknowledge(first.copy(leaseId = "stale")) shouldBe false
+            redisOrderQueue.defer(first.copy(leaseId = "stale"), Instant.now()) shouldBe false
+            redisOrderQueue.recoverExpired(Duration.ofMillis(-1)).map { it.token } shouldBe listOf(first.token)
+
+            val dueAt = Instant.now().plusSeconds(10)
+            redisOrderQueue.defer(first, dueAt) shouldBe true
+            redisOrderQueue.releaseDue(dueAt.plusSeconds(1)) shouldBe 1L
+            val second = redisOrderQueue.claim()!!
+            second.leaseId.equals(first.leaseId) shouldBe false
+            redisOrderQueue.acknowledge(first) shouldBe false
+            redisOrderQueue.acknowledge(second) shouldBe true
+            redisOrderQueue.ensureQueued(444L) shouldBe true
+            redisOrderQueue.acknowledge(redisOrderQueue.claim()!!) shouldBe true
+        } finally {
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    @Test
+    fun `real worker recovers abandoned claims before and after MySQL settlement`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+
+        try {
+            val pendingOrder = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "abandoned-before-commit")
+            val pendingEvent = outboxEventRepository.findAll().single { it.aggregateId == pendingOrder.id }
+            redisOrderQueue.enqueue(pendingEvent.id!!, pendingOrder.id) shouldBe true
+            val abandoned = redisOrderQueue.claim()!!
+            expireLease(abandoned.token)
+
+            orderWorker.processQueue()
+            val retryOrder = exchangeOrderRepository.findById(pendingOrder.id).orElseThrow()
+            retryOrder.retryAttempts shouldBe 1
+            retryOrder.status shouldBe OrderStatus.QUEUED
+            transactionRepository.count() shouldBe 0L
+
+            val retryWait = Duration.between(Instant.now(), requireNotNull(retryOrder.nextAttemptAt)).toMillis() + 100
+            if (retryWait > 0) Thread.sleep(retryWait)
+            orderWorker.processQueue()
+            exchangeOrderRepository.findById(pendingOrder.id).orElseThrow().status shouldBe OrderStatus.SETTLED
+
+            val committedOrder = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "abandoned-after-commit")
+            val committedEvent = outboxEventRepository.findAll().single { it.aggregateId == committedOrder.id }
+            redisOrderQueue.enqueue(committedEvent.id!!, committedOrder.id) shouldBe true
+            val unacknowledged = redisOrderQueue.claim()!!
+            exchangeOrderService.processQueuedOrder(committedOrder.id)
+            expireLease(unacknowledged.token)
+
+            orderWorker.processQueue()
+
+            exchangeOrderRepository.findById(committedOrder.id).orElseThrow().status shouldBe OrderStatus.SETTLED
+            walletBalance(KRW_ID).compareTo(BigDecimal("800000")) shouldBe 0
+            walletBalance(USD_ID).compareTo(BigDecimal("253.84")) shouldBe 0
+            transactionRepository.count() shouldBe 4L
+            exchangeLedgerRepository.count() shouldBe 2L
+            redisOrderQueue.claim() shouldBe null
+        } finally {
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    private fun expireLease(token: String) {
+        redisTemplate.opsForHash<String, String>().put(
+            "order:queue:lease",
+            token,
+            "abandoned:${Instant.now().minusSeconds(31).toEpochMilli()}"
+        )
+    }
+
+    @Test
     fun `sell exchanges company assets and credits fee revenue without moving cash twice`() {
         val order = exchangeOrderService.requestSellOrder(USER_ID, "USD", BigDecimal("10"), "sell-assets")
 
@@ -614,6 +739,12 @@ class ExchangeSettlementRollbackIntegrationTest {
         return simulatedBankBalanceRepository.findById(accountId).orElseThrow().balance
     }
 
+    private val quotedUserTable: String
+        get() = jdbcTemplate.dataSource!!.connection.use { connection ->
+            val quote = connection.metaData.identifierQuoteString.trim()
+            "${quote}user$quote"
+        }
+
     @TestConfiguration
     class TestConfig {
         @Bean
@@ -670,6 +801,29 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     companion object {
+        @JvmStatic
+        @DynamicPropertySource
+        fun realInfrastructureProperties(registry: DynamicPropertyRegistry) {
+            if (System.getenv("RUN_REAL_INFRA_TESTS") != "true") return
+            val password = requireNotNull(System.getenv("CURRENCY_TEST_MYSQL_PASSWORD")) {
+                "CURRENCY_TEST_MYSQL_PASSWORD is required for the isolated MySQL test database"
+            }
+            val url = "jdbc:mysql://127.0.0.1:3306/currency_bot_integration_test?useSSL=false&allowPublicKeyRetrieval=true"
+            DriverManager.getConnection(url, "root", password).use { connection ->
+                connection.createStatement().use { statement ->
+                    statement.executeQuery("SHOW TABLES").use { tables ->
+                        check(!tables.next()) { "The isolated MySQL test database must be empty" }
+                    }
+                }
+            }
+            registry.add("spring.datasource.url") { url }
+            registry.add("spring.datasource.username") { "root" }
+            registry.add("spring.datasource.password") { password }
+            registry.add("spring.datasource.driver-class-name") { "com.mysql.cj.jdbc.Driver" }
+            registry.add("spring.jpa.database-platform") { "org.hibernate.dialect.MySQLDialect" }
+            registry.add("spring.data.redis.database") { 15 }
+        }
+
         private const val COMPANY_USER_ID = 1L
         private const val USER_ID = 10L
         private const val KRW_ID = 1L
