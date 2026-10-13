@@ -2,7 +2,7 @@
 
 목표: 입금·환전·출금을 정확하게 처리하고, 중복 요청이나 장애가 발생해도 자금과 기록을 복구할 수 있게 한다.
 
-상태: 아래는 기존 코드 확인에 기반한 계획이다. **리팩토링 후 실제 결과는 아직 미검증**이며, 각 항목 구현 후 테스트 결과·측정값·커밋을 기록한다. 기대 효과를 완료 실적으로 표시하지 않는다.
+상태: 1번은 구현하고 H2 테스트로 검증했다. 2~8번은 계획이며 실제 MySQL·Redis 장애/성능 검증은 아직 하지 않았다. 각 항목 구현 후 테스트 결과·측정값·커밋을 기록한다. 기대 효과를 완료 실적으로 표시하지 않는다.
 
 ## 1. 일반 입출금 검증과 계좌 접근 통제
 
@@ -10,6 +10,7 @@
 - **개선·근거:** 금액·통화·계좌 상태·소유권을 검사하고 모든 자금 변경에 공통 잠금 규칙을 적용한다. 계좌 생성은 권한을 확인하고 테스트 자금은 개발용 seed로 격리한다. 환전 경로만 보호하면 일반 출금을 통한 정합성 훼손이 남는다.
 - **결과 검증:** 음수 입출금과 무권한 계좌 생성을 거절하고, 환전·출금 동시 실행에서도 갱신 유실과 음수 가용 잔액이 없어야 한다.
 - **코드 근거:** [WalletServiceImpl](../backend/src/main/kotlin/org/example/backend/user/service/WalletServiceImpl.kt), [SecurityConfig](../backend/src/main/kotlin/org/example/backend/common/config/SecurityConfig.kt), [AccountServiceImpl](../backend/src/main/kotlin/org/example/backend/user/service/AccountServiceImpl.kt).
+- **실제 결과 (H2):** 비인증 계좌 생성 거절, 인증 사용자 명의·초기 잔액 0 생성, 양수/통화 자릿수·연결 계좌 소유권/활성/통화 검사, 사용자→지갑→계좌 잠금 및 활성 주문 예약액을 반영한 출금을 구현했다. 기존의 의미 없는 회사 계좌 왕복 변경은 제거했다. 테스트 자금은 통합 테스트 fixture에만 넣었다. 구현 커밋 `0354955`. `backend/gradlew.bat test --no-daemon` 전체 58개 통과(2026-10-13). 실제 은행 잔액 검증·MySQL 잠금과 회사 자산/고객 채무 회계 처리는 3·4·8번 범위로 남는다.
 
 ## 2. Worker 실패 처리와 중복 실행 방지
 
