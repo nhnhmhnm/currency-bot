@@ -6,6 +6,7 @@ import { api, hasSession, setSession, User } from './api';
 
 export default function App() {
   const [view, setView] = useState<'main' | 'login' | 'signup'>('main');
+  const [currency, setCurrency] = useState<'USD' | 'JPY'>('USD');
   const [user, setUser] = useState<User | null>(null);
   const [notice, setNotice] = useState('');
   const [ready, setReady] = useState(!hasSession());
@@ -23,11 +24,20 @@ export default function App() {
   return <>
     <header className="site-header"><div className="header-inner">
       <button className="brand" onClick={() => setView('main')} aria-label="Currency Bot 홈"><span className="brand-mark"><ArrowLeftRight size={23} /></span><span>currency<span className="brand-light">bot</span><span className="brand-dot">.</span></span></button>
-      <nav aria-label="주 메뉴"><button className={`nav-link ${view === 'main' ? 'active' : ''}`} onClick={() => setView('main')}>환율 보드</button></nav>
+      <nav className="header-currency-tabs" role="tablist" aria-label="통화">
+        {([{ code: 'USD', flag: 'us', name: '미국 달러' }, { code: 'JPY', flag: 'jp', name: '일본 엔' }] as const).map(item =>
+          <button key={item.code} role="tab" aria-selected={view === 'main' && currency === item.code} className={`header-currency-tab ${view === 'main' && currency === item.code ? 'selected' : ''}`}
+            onClick={() => { setCurrency(item.code); setView('main'); }}
+            onKeyDown={event => { if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); const next = item.code === 'USD' ? 'JPY' : 'USD'; setCurrency(next); setView('main'); document.querySelector<HTMLButtonElement>(`[data-currency="${next}"]`)?.focus(); } }}
+            data-currency={item.code}>
+            <img src={`/flags/${item.flag}.png`} alt="" width="24" height="17" /><strong>{item.code}</strong><span>{item.name}</span>
+          </button>
+        )}
+      </nav>
       <div className="account-nav">{!ready ? <span className="muted">확인 중</span> : user ? <><span className="user-name">{user.name} 님</span><button className="icon-button" onClick={logout} title="로그아웃" aria-label="로그아웃"><LogOut size={19} /></button></> : <><button className="text-button" onClick={() => setView('login')}>로그인</button><button className="button small primary" onClick={() => setView('signup')}>회원가입</button></>}</div>
     </div></header>
     {notice && <div className="global-notice" role="status">{notice}<button className="text-button" onClick={() => setNotice('')}>닫기</button></div>}
-    {view !== 'main' ? <Auth mode={view} onMode={setView} onBack={() => setView('main')} onLogin={value => { setUser(value); setView('main'); setNotice(''); }} /> : <Dashboard user={user} onLogin={() => setView('login')} />}
+    {view !== 'main' ? <Auth mode={view} onMode={setView} onBack={() => setView('main')} onLogin={value => { setUser(value); setView('main'); setNotice(''); }} /> : <Dashboard user={user} currency={currency} onLogin={() => setView('login')} />}
     <footer className="site-footer"><span>currencybot.</span><span>환율의 기준을 더 명확하게.</span><span>KRW · Asia/Seoul</span></footer>
   </>;
 }

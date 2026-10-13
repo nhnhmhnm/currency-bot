@@ -9,9 +9,8 @@ const labels: Record<Mode, string> = { buy: '구매', sell: '판매', arbitrage:
 const metricLabels: Record<Metric, string> = { buyRate: '전신환 매도율', sellRate: '전신환 매입율', baseRate: '매매기준율' };
 type Confirmation = { mode: Mode; amount: string; currency: string; result: NonNullable<ReturnType<typeof estimate>>; key: string; storageKey: string };
 
-export default function Dashboard({ user, onLogin }: { user: User | null; onLogin: () => void }) {
-  const [currency, setCurrency] = useState('USD');
-  const [metric, setMetric] = useState<Metric>('buyRate');
+export default function Dashboard({ user, currency, onLogin }: { user: User | null; currency: 'USD' | 'JPY'; onLogin: () => void }) {
+  const [metrics, setMetrics] = useState<Metric[]>(['buyRate']);
   const [mode, setMode] = useState<Mode>('buy');
   const [amount, setAmount] = useState('100000');
   const [rates, setRates] = useState<Rates | null>(null);
@@ -67,8 +66,14 @@ export default function Dashboard({ user, onLogin }: { user: User | null; onLogi
   const dateLabel = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long', timeZone: 'Asia/Seoul' }).format(new Date());
   const currentRates = rates?.currency === currency && rates.date === today;
 
+  function toggleMetric(value: Metric) {
+    setMetrics(current => current.includes(value)
+      ? current.filter(metric => metric !== value)
+      : [...current, value]);
+  }
+
   function changeMode(value: Mode) {
-    setMode(value); setMetric(value === 'arbitrage' ? 'baseRate' : value === 'buy' ? 'buyRate' : 'sellRate');
+    setMode(value);
     setAmount(value === 'sell' ? (currency === 'JPY' ? '10000' : '100') : '100000'); setFormError('');
   }
   function prepare(event: FormEvent) {
@@ -107,10 +112,7 @@ export default function Dashboard({ user, onLogin }: { user: User | null; onLogi
   }
 
   return <main className="page dashboard">
-    <div className="page-heading"><div><p className="eyebrow">EXCHANGE OVERVIEW</p><h1>오늘의 환율</h1><p className="muted">{dateLabel} <span className="dot-separator">·</span> 서울 기준</p></div><button className="button refresh-button" onClick={() => { setDemo(false); setRefresh(value => value + 1); }} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''} />새로고침</button></div>
-    <div className="currency-bar"><div className="currency-tabs" role="tablist" aria-label="통화">
-      {[{ code: 'USD', name: '미국 달러', flag: 'us' }, { code: 'JPY', name: '일본 엔', flag: 'jp' }].map(item => <button key={item.code} role="tab" aria-selected={currency === item.code} className={`currency-tab ${currency === item.code ? 'selected' : ''}`} onClick={() => { setCurrency(item.code); setFormError(''); }}><img src={`/flags/${item.flag}.png`} alt="" width="28" height="20" /><strong>{item.code}</strong><span>{item.name}</span><Check size={15} className="tab-check" /></button>)}
-    </div><span className="unit-label">{rates?.unit || (currency === 'JPY' ? 100 : 1)} {currency} 기준 · KRW</span></div>
+    <div className="page-heading"><div><p className="eyebrow">EXCHANGE OVERVIEW</p><h1>오늘의 환율</h1><p className="muted">{dateLabel} <span className="dot-separator">·</span> 서울 기준 <span className="dot-separator">·</span> <span className="unit-label">{rates?.unit || (currency === 'JPY' ? 100 : 1)} {currency} 기준 · KRW</span></p></div><button className="button refresh-button" onClick={() => { setDemo(false); setRefresh(value => value + 1); }} disabled={loading}><RefreshCw size={15} className={loading ? 'spin' : ''} />새로고침</button></div>
 
     <div className="dashboard-grid"><div className="market-column">
       <div className="rate-summary">
@@ -119,11 +121,11 @@ export default function Dashboard({ user, onLogin }: { user: User | null; onLogi
         <div className="bank-count"><span className="stat-label">비교 은행</span><strong>{bankRows.length || '—'}<small>곳</small></strong><span className="stat-bank">{demo ? '샘플 데이터' : latest ? `${latest.slice(11, 16)} 최근 고시` : '고시 정보 대기'}</span></div>
       </div>
       <section className="chart-section" aria-labelledby="chart-title"><div className="section-heading"><h2 id="chart-title">은행별 환율 추이</h2>{demo ? <span className="sample-label">샘플 · 실제 주문 불가</span> : <span className="live-label"><span />오늘 고시</span>}</div>
-        <div className="chart-controls"><div className="segmented" aria-label="그래프 환율 기준">{(['buyRate', 'sellRate', 'baseRate'] as Metric[]).map(value => <button key={value} aria-pressed={metric === value} onClick={() => setMetric(value)} className={metric === value ? 'selected' : ''}>{metricLabels[value]}</button>)}</div><span className="muted">단위: 원</span></div>
-        {loading ? <div className="chart-empty"><LoaderCircle size={26} className="spin" /><p>환율을 불러오는 중입니다.</p></div> : rates?.points.length ? <Suspense fallback={<div className="chart-empty">그래프 준비 중</div>}><RateChart rates={rates} metric={metric} /></Suspense> : <div className="chart-empty"><ChartNoAxesCombined size={36} strokeWidth={1.3} /><strong>{ratesError ? '환율을 불러오지 못했습니다' : '오늘 고시된 환율이 없습니다'}</strong><p>{ratesError || '새로운 고시가 등록되면 표시됩니다.'}</p><button className="text-button" onClick={() => setDemo(true)}>샘플 보기 <ArrowRight size={14} /></button></div>}
+        <div className="chart-controls"><div className="metric-checks" role="group" aria-label="그래프 환율 기준">{(['buyRate', 'sellRate', 'baseRate'] as Metric[]).map(value => <label key={value} className={metrics.includes(value) ? 'checked' : ''}><input type="checkbox" checked={metrics.includes(value)} onChange={() => toggleMetric(value)} /><span className={`metric-line ${value}`} aria-hidden="true" />{metricLabels[value]}</label>)}</div><span className="muted">단위: 원</span></div>
+        {loading ? <div className="chart-empty"><LoaderCircle size={26} className="spin" /><p>환율을 불러오는 중입니다.</p></div> : rates?.points.length && !metrics.length ? <div className="chart-empty"><ChartNoAxesCombined size={32} strokeWidth={1.3} /><strong>표시할 환율을 선택해 주세요</strong></div> : rates?.points.length ? <Suspense fallback={<div className="chart-empty">그래프 준비 중</div>}><RateChart rates={rates} metrics={metrics} /></Suspense> : <div className="chart-empty"><ChartNoAxesCombined size={36} strokeWidth={1.3} /><strong>{ratesError ? '환율을 불러오지 못했습니다' : '오늘 고시된 환율이 없습니다'}</strong><p>{ratesError || '새로운 고시가 등록되면 표시됩니다.'}</p><button className="text-button" onClick={() => setDemo(true)}>샘플 보기 <ArrowRight size={14} /></button></div>}
         <div className="chart-legend">{bankRows.map((bank, index) => <span key={bank.bankId}><i style={{ background: colors[index % colors.length] }} />{bank.bankName}</span>)}</div>
       </section>
-      <section className="bank-section" aria-labelledby="bank-title"><div className="section-heading"><h2 id="bank-title">은행별 고시 환율</h2><span className="muted">최근 고시 기준</span></div><div className="table-scroll"><table><thead><tr><th>은행</th><th className={metric === 'buyRate' ? 'highlight-column' : ''}>구매 <small>전신환 매도율</small></th><th className={metric === 'sellRate' ? 'highlight-column' : ''}>판매 <small>전신환 매입율</small></th><th className={metric === 'baseRate' ? 'highlight-column' : ''}>매매기준율</th><th>고시 시각</th></tr></thead><tbody>{bankRows.map((bank, index) => <tr key={bank.bankId}><th><span className="bank-symbol" style={{ color: colors[index % colors.length], background: `${colors[index % colors.length]}12` }}>{bank.bankName.slice(0, 1)}</span>{bank.bankName}</th><td className={metric === 'buyRate' ? 'highlight-column' : ''}>{format(bank.buyRate)}</td><td className={metric === 'sellRate' ? 'highlight-column' : ''}>{format(bank.sellRate)}</td><td className={metric === 'baseRate' ? 'highlight-column' : ''}>{format(bank.baseRate)}</td><td className="time-cell">{bank.time.slice(11, 16)}</td></tr>)}{!bankRows.length && <tr><td colSpan={5} className="table-empty">{loading ? '조회 중' : '표시할 고시가 없습니다.'}</td></tr>}</tbody></table></div></section>
+      <section className="bank-section" aria-labelledby="bank-title"><div className="section-heading"><h2 id="bank-title">은행별 고시 환율</h2><span className="muted">최근 고시 기준</span></div><div className="table-scroll"><table><thead><tr><th>은행</th><th className={metrics.includes('buyRate') ? 'highlight-column' : ''}>구매 <small>전신환 매도율</small></th><th className={metrics.includes('sellRate') ? 'highlight-column' : ''}>판매 <small>전신환 매입율</small></th><th className={metrics.includes('baseRate') ? 'highlight-column' : ''}>매매기준율</th><th>고시 시각</th></tr></thead><tbody>{bankRows.map((bank, index) => <tr key={bank.bankId}><th><span className="bank-symbol" style={{ color: colors[index % colors.length], background: `${colors[index % colors.length]}12` }}>{bank.bankName.slice(0, 1)}</span>{bank.bankName}</th><td className={metrics.includes('buyRate') ? 'highlight-column' : ''}>{format(bank.buyRate)}</td><td className={metrics.includes('sellRate') ? 'highlight-column' : ''}>{format(bank.sellRate)}</td><td className={metrics.includes('baseRate') ? 'highlight-column' : ''}>{format(bank.baseRate)}</td><td className="time-cell">{bank.time.slice(11, 16)}</td></tr>)}{!bankRows.length && <tr><td colSpan={5} className="table-empty">{loading ? '조회 중' : '표시할 고시가 없습니다.'}</td></tr>}</tbody></table></div></section>
       <p className="market-footnote"><Clock3 size={13} />고시 시각에 따라 은행별 환율이 다를 수 있으며, 주문 시점의 적용 환율은 달라질 수 있습니다.</p>
     </div>
 
