@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { sampleRates } from '../src/exchange';
+import { minimumOrderAmount, sampleRates } from '../src/exchange';
 
 async function dashboard(page: Page, options: { authenticated?: boolean; failRates?: boolean } = {}) {
   if (options.authenticated) await page.addInitScript(() => sessionStorage.setItem('currency-session', JSON.stringify({ accessToken: 'access', refreshToken: 'refresh' })));
@@ -52,6 +52,22 @@ test('dashboard renders chart, local visual assets and responsive layout', async
   expect(errors).toEqual([]);
 });
 
+test('order amount follows the currency quotation unit and preserves manual edits', async ({ page }) => {
+  await dashboard(page, { authenticated: true });
+  await page.goto('/');
+  const amount = page.getByLabel('주문 금액');
+  await expect(amount).toHaveValue(minimumOrderAmount(sampleRates('USD'), 'buy'));
+  await amount.fill('50000');
+  await page.getByRole('button', { name: '새로고침' }).click();
+  await expect(amount).toHaveValue('50000');
+  await page.getByRole('button', { name: '판매', exact: true }).click();
+  await expect(amount).toHaveValue('1');
+  await page.getByRole('tab', { name: /JPY/ }).click();
+  await expect(amount).toHaveValue('100');
+  await page.getByRole('button', { name: '구매', exact: true }).click();
+  await expect(amount).toHaveValue(minimumOrderAmount(sampleRates('JPY'), 'buy'));
+});
+
 test('system theme switches surfaces and keeps rate colors distinct', async ({ page }, testInfo) => {
   await dashboard(page, { authenticated: true });
   await page.emulateMedia({ colorScheme: 'light' });
@@ -100,7 +116,7 @@ test('buy, sell and arbitrage require confirmation and use separate endpoints', 
   expect(requests).toHaveLength(0);
   await expect(page.getByRole('dialog')).toContainText('전신환 매도율');
   await page.getByRole('button', { name: '주문 접수', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('주문번호 #42');
+  await expect(page.locator('.order-feedback')).toContainText('주문번호 #42');
   await page.getByRole('button', { name: '판매', exact: true }).click();
   await page.getByRole('button', { name: '판매 주문 확인' }).click();
   await expect(page.getByRole('dialog')).toContainText('전신환 매입율');
@@ -132,7 +148,7 @@ test('uncertain submission reuses its idempotency key', async ({ page }) => {
   await page.getByRole('button', { name: '주문 접수', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('접수 결과를 확인하지 못했습니다');
   await page.getByRole('button', { name: '같은 요청으로 다시 확인' }).click();
-  await expect(page.getByRole('status')).toContainText('#99');
+  await expect(page.locator('.order-feedback')).toContainText('#99');
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(keys[1]);
 });
@@ -141,6 +157,7 @@ test('offline mode does not fabricate live data or permit sample trades', async 
   await dashboard(page, { failRates: true });
   await page.goto('/');
   await expect(page.getByText('환율을 불러오지 못했습니다')).toBeVisible();
+  await expect(page.getByLabel('주문 금액')).toHaveValue('0');
   await expect(page.locator('.limit-number')).toContainText('—');
   await page.getByRole('button', { name: '샘플 보기' }).click();
   await expect(page.getByText('샘플 · 실제 주문 불가')).toBeVisible();
@@ -157,6 +174,12 @@ test('insufficient balance and fractional KRW cannot submit an order', async ({ 
   await page.getByLabel('주문 금액').fill('100000.1');
   await page.getByRole('button', { name: '구매 주문 확인' }).click();
   await expect(page.getByRole('alert')).toContainText('소수점 0자리');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('tab', { name: /JPY/ }).click();
+  await page.getByRole('button', { name: '판매', exact: true }).click();
+  await page.getByLabel('주문 금액').fill('99');
+  await page.getByRole('button', { name: '판매 주문 확인' }).click();
+  await expect(page.getByRole('alert')).toContainText('최소 주문 금액은 100 JPY');
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 

@@ -41,6 +41,7 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
     val userId = 10L
     val krw = Currency(id = 1L, code = "KRW", name = "Korean Won", scale = 0, unit = BigDecimal.ONE)
     val usd = Currency(id = 2L, code = "USD", name = "US Dollar", scale = 2, unit = BigDecimal.ONE)
+    val jpy = Currency(id = 3L, code = "JPY", name = "Japanese Yen", scale = 0, unit = BigDecimal("100"))
     val user = User(
         id = userId,
         device = "device",
@@ -56,6 +57,12 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
         every { userRepository.findByIdForUpdate(userId) } returns user
         every { currencyRepository.findByCode("USD") } returns usd
         every { exchangeService.getBestBuyBaseRate("USD") } returns BestExchangeRateDto(
+            bankId = 1L,
+            currencyId = usd.id,
+            bestRate = BigDecimal("1300"),
+            type = ExchangeType.BUY
+        )
+        every { exchangeService.getBestBuyRate("USD") } returns BestExchangeRateDto(
             bankId = 1L,
             currencyId = usd.id,
             bestRate = BigDecimal("1300"),
@@ -147,5 +154,31 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
         )
 
         usdEquivalentAmount shouldBe BigDecimal("1.000000")
+    }
+
+    test("rejects a buy below the quoted unit price before accepting the order") {
+        every { walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, krw.id) } returns Wallet(
+            id = 1L, userId = userId, currencyId = krw.id, balance = BigDecimal("10000")
+        )
+        every { exchangeOrderRepository.sumReservedFromAmount(userId, krw.id, any<Collection<OrderStatus>>()) } returns BigDecimal.ZERO
+
+        val exception = shouldThrow<UserException> {
+            validator.validate(userId, OrderType.BUY, krw, usd, BigDecimal("1299"))
+        }
+
+        exception.errorCode shouldBe ErrorCode.INVALID_EXCHANGE_AMOUNT.code
+    }
+
+    test("rejects a JPY sale below its 100-unit quotation before accepting the order") {
+        every { walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, jpy.id) } returns Wallet(
+            id = 2L, userId = userId, currencyId = jpy.id, balance = BigDecimal("1000")
+        )
+        every { exchangeOrderRepository.sumReservedFromAmount(userId, jpy.id, any<Collection<OrderStatus>>()) } returns BigDecimal.ZERO
+
+        val exception = shouldThrow<UserException> {
+            validator.validate(userId, OrderType.SELL, jpy, krw, BigDecimal("99"))
+        }
+
+        exception.errorCode shouldBe ErrorCode.INVALID_EXCHANGE_AMOUNT.code
     }
 })

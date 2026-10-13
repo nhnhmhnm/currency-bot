@@ -300,7 +300,7 @@ class ExchangeOrderServiceImpl(
             exchangeService.getBestSellRate(fromCurrency.code)
         }
 
-        require(order.fromAmount >= toCurrency.unit) {
+        require(order.fromAmount >= fromCurrency.unit) {
             "Minimum exchange amount not met for ${fromCurrency.code}"
         }
 

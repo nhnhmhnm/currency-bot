@@ -2,7 +2,7 @@ import { FormEvent, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, BadgeCheck, ChartNoAxesCombined, Check, CircleAlert, Clock3, LoaderCircle, RefreshCw, ShieldCheck, Wallet, X } from 'lucide-react';
 import Decimal from 'decimal.js';
 import { api, ApiError, User } from './api';
-import { banks, best, estimate, format, Metric, Mode, orderRequest, Rates, sampleRates, seoulDate, Summary } from './exchange';
+import { banks, best, estimate, format, Metric, minimumOrderAmount, Mode, orderRequest, Rates, sampleRates, seoulDate, Summary } from './exchange';
 
 const RateChart = lazy(() => import('./RateChart'));
 const labels: Record<Mode, string> = { buy: '구매', sell: '판매', arbitrage: '재테크' };
@@ -12,7 +12,7 @@ type Confirmation = { mode: Mode; amount: string; currency: string; result: NonN
 export default function Dashboard({ user, currency, onLogin }: { user: User | null; currency: 'USD' | 'JPY'; onLogin: () => void }) {
   const [metrics, setMetrics] = useState<Metric[]>(['buyRate']);
   const [mode, setMode] = useState<Mode>('buy');
-  const [amount, setAmount] = useState('100000');
+  const [amountOverride, setAmountOverride] = useState<{ currency: string; mode: Mode; value: string } | null>(null);
   const [rates, setRates] = useState<Rates | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [ratesError, setRatesError] = useState('');
@@ -54,6 +54,13 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
     if (confirmation && dialog.current && !dialog.current.open) dialog.current.showModal();
   }, [confirmation]);
 
+  useEffect(() => { setAmountOverride(null); setFormError(''); }, [currency]);
+
+  const today = seoulDate();
+  const currentRates = rates?.currency === currency && rates.date === today;
+  const amount = amountOverride?.currency === currency && amountOverride.mode === mode
+    ? amountOverride.value
+    : minimumOrderAmount(currentRates && !demo ? rates : null, mode);
   const bankRows = banks(rates);
   const buy = best(rates, 'buyRate', 'min');
   const sell = best(rates, 'sellRate', 'max');
@@ -62,9 +69,7 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
   const destination = mode === 'buy' ? currency : 'KRW';
   const available = summary?.wallets.find(wallet => wallet.currency === source)?.available;
   const latest = rates?.points.map(point => point.time).sort().at(-1);
-  const today = seoulDate();
   const dateLabel = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'long', timeZone: 'Asia/Seoul' }).format(new Date());
-  const currentRates = rates?.currency === currency && rates.date === today;
 
   function toggleMetric(value: Metric) {
     setMetrics(current => current.includes(value)
@@ -74,7 +79,7 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
 
   function changeMode(value: Mode) {
     setMode(value);
-    setAmount(value === 'sell' ? (currency === 'JPY' ? '10000' : '100') : '100000'); setFormError('');
+    setAmountOverride(null); setFormError('');
   }
   function prepare(event: FormEvent) {
     event.preventDefault(); setFormError(''); setMessage('');
@@ -83,12 +88,13 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
     const input = new Decimal(amount);
     const scale = mode === 'sell' ? rates!.scale : 0;
     if (input.decimalPlaces() > scale) { setFormError(`${source} 금액은 소수점 ${scale}자리까지 입력할 수 있습니다.`); return; }
+    const minimum = new Decimal(minimumOrderAmount(rates, mode));
+    if (input.lt(minimum)) { setFormError(`최소 주문 금액은 ${format(minimum, scale)} ${source}입니다.`); return; }
     const storageKey = `pending-order:${user.id}:${mode}:${currency}:${input.toFixed()}`;
     const previousKey = sessionStorage.getItem(storageKey);
     if (!previousKey && (available == null || input.gt(available))) { setFormError('주문 가능한 잔액이 부족합니다.'); return; }
     if (!previousKey && new Decimal(summary.remainingUsd).lte(0)) { setFormError('오늘의 환전 한도를 모두 사용했습니다.'); return; }
     if (result.receive.lte(0)) { setFormError('환전 후 금액이 0보다 커야 합니다.'); return; }
-    if (mode !== 'sell' && input.lt(result.rate)) { setFormError(`최소 주문 금액은 ${format(result.rate)}원입니다.`); return; }
     setSubmitError('');
     setConfirmation({ mode, currency, amount: input.toFixed(), result, key: previousKey || crypto.randomUUID(), storageKey });
   }
@@ -135,7 +141,7 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
         <div className="trade-tabs" role="group" aria-label="주문 종류"><button className={`buy ${mode === 'buy' ? 'selected' : ''}`} aria-pressed={mode === 'buy'} onClick={() => changeMode('buy')}><ArrowDownLeft size={17} />구매</button><button className={`sell ${mode === 'sell' ? 'selected' : ''}`} aria-pressed={mode === 'sell'} onClick={() => changeMode('sell')}><ArrowUpRight size={17} />판매</button></div>
         {mode === 'arbitrage' && <div className="strategy-active"><ChartNoAxesCombined size={16} />매매기준율 구매 + 판매</div>}
         <form onSubmit={prepare}>
-          <label className="amount-label" htmlFor="amount">{mode === 'sell' ? '판매할 금액' : '사용할 금액'}</label><div className="amount-input"><input id="amount" aria-label="주문 금액" value={amount} onChange={event => { if (/^\d*\.?\d*$/.test(event.target.value)) { setAmount(event.target.value); setFormError(''); } }} inputMode="decimal" required maxLength={16} placeholder="0" /><span>{source}</span></div>
+          <label className="amount-label" htmlFor="amount">{mode === 'sell' ? '판매할 금액' : '사용할 금액'}</label><div className="amount-input"><input id="amount" aria-label="주문 금액" value={amount} onChange={event => { if (/^\d*\.?\d*$/.test(event.target.value)) { setAmountOverride({ currency, mode, value: event.target.value }); setFormError(''); } }} inputMode="decimal" required maxLength={16} placeholder="0" /><span>{source}</span></div>
           <p className="available"><Wallet size={13} />주문 가능 <strong>{user && summary ? format(available || 0, source === 'KRW' ? 0 : rates?.scale ?? 2) : '—'} {source}</strong></p>
           <div className="conversion-line"><span /><ArrowDownLeft size={17} /><span /></div>
           <div className={`receive-line ${mode}`}><span>예상 {mode === 'arbitrage' ? '최종 수령액' : '수령액'}</span><strong>{format(result?.receive, destination === 'KRW' ? 0 : rates?.scale ?? 2)} <small>{destination}</small></strong></div>

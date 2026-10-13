@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { best, estimate, orderRequest, Rates, sampleRates } from './exchange';
+import { best, estimate, minimumOrderAmount, orderRequest, Rates, sampleRates } from './exchange';
 
 const rates: Rates = { date: '2026-10-08', currency: 'USD', unit: 1, scale: 2, points: [
   { bankId: 1, bankName: 'A', time: '2026-10-08T10:00:00', buyRate: 1400, sellRate: 1380, baseRate: 1390 },
@@ -16,6 +16,17 @@ describe('exchange quote previews', () => {
     const jpy = { ...rates, currency: 'JPY', unit: 100, scale: 0, points: [{ ...rates.points[0], buyRate: 950, sellRate: 930 }] };
     expect(estimate(jpy, 'buy', '100000')?.receive.toFixed()).toBe('10526');
     expect(estimate(jpy, 'sell', '100')?.receive.toFixed()).toBe('929');
+  });
+  it('defaults to one quoted unit and zero without a usable rate', () => {
+    const fractional = { ...rates, points: [{ ...rates.points[0], buyRate: 1400.25, baseRate: 1390.75 }] };
+    expect(minimumOrderAmount(fractional, 'buy')).toBe('1401');
+    expect(minimumOrderAmount(fractional, 'sell')).toBe('1');
+    expect(minimumOrderAmount(fractional, 'arbitrage')).toBe('1391');
+    const jpy = { ...fractional, currency: 'JPY', unit: 100, scale: 0, points: [{ ...fractional.points[0], buyRate: 950.12 }] };
+    expect(minimumOrderAmount(jpy, 'buy')).toBe('951');
+    expect(minimumOrderAmount(jpy, 'sell')).toBe('100');
+    expect(minimumOrderAmount(null, 'buy')).toBe('0');
+    expect(minimumOrderAmount({ ...rates, points: [] }, 'sell')).toBe('0');
   });
   it('uses base rates for both arbitrage legs without a guaranteed profit', () => {
     const quote = estimate(rates, 'arbitrage', '100000');

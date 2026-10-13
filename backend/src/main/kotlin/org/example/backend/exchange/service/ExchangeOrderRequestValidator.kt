@@ -58,6 +58,15 @@ class ExchangeOrderRequestValidator(
 
         validateAvailableBalance(userId, fromCurrency.id, fromAmount)
 
+        val minimumAmount = when (orderType) {
+            OrderType.BUY -> exchangeService.getBestBuyRate(toCurrency.code).bestRate
+            OrderType.ARBITRAGE -> exchangeService.getBestBuyBaseRate(toCurrency.code).bestRate
+            OrderType.SELL -> fromCurrency.unit
+        }
+        if (fromAmount < minimumAmount) {
+            throw UserException(ErrorCode.INVALID_EXCHANGE_AMOUNT)
+        }
+
         val usdEquivalentAmount = calculateUsdEquivalentAmount(
             orderType = orderType,
             fromCurrency = fromCurrency,

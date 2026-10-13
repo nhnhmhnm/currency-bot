@@ -25,6 +25,13 @@ export function best(rates: Rates | null, metric: Metric, direction: 'min' | 'ma
     .sort((a, b) => new Decimal(a[metric]!).cmp(b[metric]!) * (direction === 'min' ? 1 : -1))[0];
 }
 
+export function minimumOrderAmount(rates: Rates | null, mode: Mode): string {
+  if (!rates || !new Decimal(rates.unit).gt(0)) return '0';
+  const quote = best(rates, mode === 'arbitrage' ? 'baseRate' : mode === 'buy' ? 'buyRate' : 'sellRate', mode === 'sell' ? 'max' : 'min');
+  if (!quote) return '0';
+  return mode === 'sell' ? new Decimal(rates.unit).toFixed() : new Decimal(quote[mode === 'arbitrage' ? 'baseRate' : 'buyRate']!).ceil().toFixed(0);
+}
+
 export function estimate(rates: Rates | null, mode: Mode, amount: string) {
   if (!rates || !/^\d+(\.\d+)?$/.test(amount) || !new Decimal(amount).gt(0)) return null;
   const input = new Decimal(amount);

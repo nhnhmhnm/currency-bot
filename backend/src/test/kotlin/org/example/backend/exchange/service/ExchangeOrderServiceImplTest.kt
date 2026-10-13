@@ -163,6 +163,38 @@ class ExchangeOrderServiceImplTest : FunSpec({
         }
     }
 
+    test("sellOrder rejects an amount below the source currency quotation unit") {
+        val jpy = Currency(id = 3L, code = "JPY", name = "Japanese Yen", scale = 0, unit = BigDecimal("100"))
+        val savedOrder = ExchangeOrder(
+            id = 13L,
+            userId = 99L,
+            bankId = 0L,
+            fromCurrencyId = jpy.id,
+            toCurrencyId = krw.id,
+            fromAmount = BigDecimal("99"),
+            toAmount = BigDecimal.ZERO,
+            exchangeRate = BigDecimal.ZERO,
+            orderType = OrderType.SELL,
+            status = OrderStatus.PROCESSING
+        )
+        every { currencyRepository.findByCode("JPY") } returns jpy
+        every { currencyRepository.findByCode("KRW") } returns krw
+        every { currencyRepository.findById(jpy.id) } returns Optional.of(jpy)
+        every { currencyRepository.findById(krw.id) } returns Optional.of(krw)
+        every { exchangeOrderRepository.save(any()) } returns savedOrder
+        every { exchangeService.getBestSellRate("JPY") } returns BestExchangeRateDto(
+            bankId = 1L,
+            currencyId = jpy.id,
+            bestRate = BigDecimal("930"),
+            type = ExchangeType.SELL
+        )
+
+        shouldThrow<IllegalArgumentException> {
+            sut.sellOrder(99L, "JPY", BigDecimal("99"), false)
+        }
+        verify(exactly = 0) { walletService.userToCompany(any(), any(), any(), any(), any()) }
+    }
+
     test("requestBuyOrder returns the existing order for the same idempotency key and payload") {
         val existingOrder = ExchangeOrder(
             id = 20L,
