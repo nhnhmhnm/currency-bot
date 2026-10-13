@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeftRight, LogOut } from 'lucide-react';
 import Auth from './Auth';
+import Dashboard from './Dashboard';
 import { api, hasSession, setSession, User } from './api';
 
 export default function App() {
@@ -26,7 +27,7 @@ export default function App() {
       <div className="account-nav">{!ready ? <span className="muted">확인 중</span> : user ? <><span className="user-name">{user.name} 님</span><button className="icon-button" onClick={logout} title="로그아웃" aria-label="로그아웃"><LogOut size={19} /></button></> : <><button className="text-button" onClick={() => setView('login')}>로그인</button><button className="button small primary" onClick={() => setView('signup')}>회원가입</button></>}</div>
     </div></header>
     {notice && <div className="global-notice" role="status">{notice}<button className="text-button" onClick={() => setNotice('')}>닫기</button></div>}
-    {view !== 'main' ? <Auth mode={view} onMode={setView} onBack={() => setView('main')} onLogin={value => { setUser(value); setView('main'); setNotice(''); }} /> : <main className="page"><h1>오늘의 환율</h1><p className="muted">은행별 환율</p></main>}
+    {view !== 'main' ? <Auth mode={view} onMode={setView} onBack={() => setView('main')} onLogin={value => { setUser(value); setView('main'); setNotice(''); }} /> : <Dashboard user={user} onLogin={() => setView('login')} />}
     <footer className="site-footer"><span>currencybot.</span><span>환율의 기준을 더 명확하게.</span><span>KRW · Asia/Seoul</span></footer>
   </>;
 }
