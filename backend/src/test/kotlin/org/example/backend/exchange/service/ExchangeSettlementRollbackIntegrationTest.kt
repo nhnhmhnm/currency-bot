@@ -8,6 +8,7 @@ import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
 import org.example.backend.enums.OutboxEventType
+import org.example.backend.enums.OutboxEventStatus
 import org.example.backend.enums.UserType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
@@ -17,6 +18,7 @@ import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.dto.ExchangeLedgerCommand
 import org.example.backend.exchange.dto.ExchangeLedgerResponse
 import org.example.backend.exchange.repository.ExchangeLedgerRepository
+import org.example.backend.exchange.repository.CompletedOrderViewRepository
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.exchange.repository.OutboxEventRepository
@@ -24,6 +26,7 @@ import org.example.backend.exchange.repository.TransactionRepository
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.domain.InternalAccount
 import org.example.backend.finance.repository.InternalAccountRepository
+import org.example.backend.common.util.RedisCompletionQueue
 import org.example.backend.finance.repository.JournalRepository
 import org.example.backend.finance.repository.JournalLineRepository
 import org.example.backend.finance.service.JournalReconciliationService
@@ -49,6 +52,7 @@ import org.springframework.context.annotation.Primary
 import org.springframework.http.MediaType
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.connection.RedisStreamCommands.XClaimOptions
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -133,6 +137,18 @@ class ExchangeSettlementRollbackIntegrationTest {
     private lateinit var exchangeLedgerRepository: ExchangeLedgerRepository
 
     @Autowired
+    private lateinit var completedOrderViewRepository: CompletedOrderViewRepository
+
+    @Autowired
+    private lateinit var completedOrderWorker: CompletedOrderWorker
+
+    @Autowired
+    private lateinit var completedOrderProjectionService: CompletedOrderProjectionService
+
+    @Autowired
+    private lateinit var redisCompletionQueue: RedisCompletionQueue
+
+    @Autowired
     private lateinit var walletFxHistoryRepository: WalletFxHistoryRepository
 
     @Autowired
@@ -180,6 +196,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         jdbcTemplate.update("delete from journal")
         jdbcTemplate.update("delete from deposit_withdrawal")
         exchangeLedgerRepository.deleteAll()
+        completedOrderViewRepository.deleteAll()
         transactionRepository.deleteAll()
         outboxEventRepository.deleteAll()
         reservationRepository.deleteAll()
@@ -294,6 +311,61 @@ class ExchangeSettlementRollbackIntegrationTest {
         journalRepository.count() shouldBe 1L
         journalLineRepository.count() shouldBe 5L
         journalReconciliationService.audit().balanced shouldBe true
+    }
+
+    @Test
+    fun `completion projection is idempotent and visible only to the order owner`() {
+        val accepted = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "completion-view")
+        exchangeOrderService.processQueuedOrder(accepted.id)
+        val event = outboxEventRepository.findAll().single { it.eventType == OutboxEventType.ORDER_COMPLETED }
+        val before = balanceSnapshot()
+
+        completedOrderProjectionService.apply(event.id!!)
+        completedOrderProjectionService.apply(event.id!!)
+
+        completedOrderViewRepository.count() shouldBe 1L
+        completedOrderProjectionService.history(USER_ID, 20).single().orderId shouldBe accepted.id
+        completedOrderProjectionService.history(SECOND_USER_ID, 20).size shouldBe 0
+        fun auth(userId: Long) = authentication(UsernamePasswordAuthenticationToken(
+            UserPrincipal(userId, "user", UserType.GENERAL), null, listOf(SimpleGrantedAuthority("ROLE_GENERAL"))
+        ))
+        mockMvc.perform(get("/api/exchange/history").with(auth(USER_ID)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].orderId").value(accepted.id))
+            .andExpect(jsonPath("$[0].eventId").doesNotExist())
+            .andExpect(jsonPath("$[0].userId").doesNotExist())
+        mockMvc.perform(get("/api/exchange/history").with(auth(SECOND_USER_ID)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(0))
+        balanceSnapshot() shouldBe before
+    }
+
+    @Test
+    fun `completion events remain pending for a separate worker without blocking settlement`() {
+        val accepted = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "completion-independent")
+        exchangeOrderService.processQueuedOrder(accepted.id)
+
+        exchangeOrderRepository.findById(accepted.id).orElseThrow().status shouldBe OrderStatus.SETTLED
+        journalRepository.count() shouldBe 1L
+        completedOrderViewRepository.count() shouldBe 0L
+        outboxEventRepository.findAll().single { it.eventType == OutboxEventType.ORDER_COMPLETED }.status shouldBe OutboxEventStatus.PENDING
+    }
+
+    @Test
+    fun `out of order completion events produce the same read model`() {
+        val first = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "projection-first")
+        val second = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "projection-second")
+        exchangeOrderService.processQueuedOrder(first.id)
+        exchangeOrderService.processQueuedOrder(second.id)
+        val events = outboxEventRepository.findAll().filter { it.eventType == OutboxEventType.ORDER_COMPLETED }
+            .associateBy { it.aggregateId }
+
+        completedOrderProjectionService.apply(events.getValue(second.id).id!!)
+        completedOrderProjectionService.apply(events.getValue(first.id).id!!)
+
+        completedOrderProjectionService.history(USER_ID, 20).map { it.orderId }.toSet() shouldBe setOf(first.id, second.id)
+        transactionRepository.count() shouldBe 4L
+        journalRepository.count() shouldBe 2L
     }
 
     @Test
@@ -607,7 +679,7 @@ class ExchangeSettlementRollbackIntegrationTest {
             exchangeLedgerRepository.count() shouldBe 1L
             redisOrderQueue.claim() shouldBe null
         } finally {
-            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
             if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
         }
     }
@@ -670,7 +742,7 @@ class ExchangeSettlementRollbackIntegrationTest {
             redisOrderQueue.claim() shouldBe null
             println("REAL_DEADLOCK victim_order_id=${orders[victimIndex].id} sqlstate=${sqlFailure.sqlState} code=${sqlFailure.errorCode} replay=settled_once")
         } finally {
-            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
             if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
         }
     }
@@ -732,7 +804,7 @@ class ExchangeSettlementRollbackIntegrationTest {
                     "completion_max_ms=${completionMs.last()}"
             )
         } finally {
-            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
             if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
         }
     }
@@ -749,10 +821,12 @@ class ExchangeSettlementRollbackIntegrationTest {
             redisOrderQueue.claim() shouldBe null
             redisOrderQueue.acknowledge(first.copy(leaseId = "stale")) shouldBe false
             redisOrderQueue.defer(first.copy(leaseId = "stale"), Instant.now()) shouldBe false
-            redisOrderQueue.recoverExpired(Duration.ofMillis(-1)).map { it.token } shouldBe listOf(first.token)
+            val recovered = redisOrderQueue.recoverExpired(Duration.ZERO).single()
+            recovered.token shouldBe first.token
+            redisOrderQueue.acknowledge(first) shouldBe false
 
             val dueAt = Instant.now().plusSeconds(10)
-            redisOrderQueue.defer(first, dueAt) shouldBe true
+            redisOrderQueue.defer(recovered, dueAt) shouldBe true
             redisOrderQueue.releaseDue(dueAt.plusSeconds(1)) shouldBe 1L
             val second = redisOrderQueue.claim()!!
             second.leaseId.equals(first.leaseId) shouldBe false
@@ -761,7 +835,39 @@ class ExchangeSettlementRollbackIntegrationTest {
             redisOrderQueue.ensureQueued(444L) shouldBe true
             redisOrderQueue.acknowledge(redisOrderQueue.claim()!!) shouldBe true
         } finally {
-            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    @Test
+    fun `real completion stream recovers a lost publish and prevents duplicate projections`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+
+        try {
+            val accepted = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "completion-stream")
+            exchangeOrderService.processQueuedOrder(accepted.id)
+            val event = outboxEventRepository.findAll().single { it.eventType == OutboxEventType.ORDER_COMPLETED }
+            outboxEventPublisher.publishPendingOrderEvents()
+            outboxEventRepository.findById(event.id!!).orElseThrow().status shouldBe OutboxEventStatus.PUBLISHED
+            redisTemplate.delete("order:completion:stream")
+
+            completedOrderWorker.recoverUnprojected()
+            val abandoned = redisCompletionQueue.claim()!!
+            val recovered = redisCompletionQueue.recoverExpired(Duration.ZERO).single()
+            redisCompletionQueue.acknowledge(abandoned) shouldBe false
+            completedOrderProjectionService.apply(recovered.subjectId)
+            redisCompletionQueue.acknowledge(recovered) shouldBe true
+
+            redisCompletionQueue.ensureQueued(event.id!!) shouldBe false
+            completedOrderViewRepository.count() shouldBe 1L
+            completedOrderProjectionService.apply(event.id!!)
+            completedOrderViewRepository.count() shouldBe 1L
+            exchangeOrderRepository.findById(accepted.id).orElseThrow().status shouldBe OrderStatus.SETTLED
+            journalRepository.count() shouldBe 1L
+        } finally {
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
             if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
         }
     }
@@ -805,16 +911,17 @@ class ExchangeSettlementRollbackIntegrationTest {
             exchangeLedgerRepository.count() shouldBe 2L
             redisOrderQueue.claim() shouldBe null
         } finally {
-            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
             if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
         }
     }
 
     private fun expireLease(token: String) {
-        redisTemplate.opsForHash<String, String>().put(
-            "order:queue:lease",
-            token,
-            "abandoned:${Instant.now().minusSeconds(31).toEpochMilli()}"
+        redisTemplate.opsForStream<String, String>().claim(
+            "order:queue:stream",
+            "order-settlement",
+            "abandoned",
+            XClaimOptions.minIdle(Duration.ZERO).ids(token).idle(Duration.ofSeconds(31))
         )
     }
 

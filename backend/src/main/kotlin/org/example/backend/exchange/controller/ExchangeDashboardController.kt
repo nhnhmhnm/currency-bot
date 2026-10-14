@@ -2,6 +2,7 @@ package org.example.backend.exchange.controller
 
 import org.example.backend.auth.dto.UserPrincipal
 import org.example.backend.exchange.service.ExchangeDashboardService
+import org.example.backend.exchange.service.CompletedOrderProjectionService
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -11,7 +12,10 @@ import java.util.Locale
 
 @RestController
 @RequestMapping("/api/exchange")
-class ExchangeDashboardController(private val dashboard: ExchangeDashboardService) {
+class ExchangeDashboardController(
+    private val dashboard: ExchangeDashboardService,
+    private val completedOrders: CompletedOrderProjectionService
+) {
     @GetMapping("/rates")
     fun rates(@RequestParam(defaultValue = "USD") currency: String) = dashboard.rates(currency.uppercase(Locale.ROOT))
 
@@ -20,4 +24,8 @@ class ExchangeDashboardController(private val dashboard: ExchangeDashboardServic
 
     @GetMapping("/arbitrage/terms")
     fun arbitrageTerms(@RequestParam currency: String) = dashboard.arbitrageTerms(currency.uppercase(Locale.ROOT))
+
+    @GetMapping("/history")
+    fun history(@AuthenticationPrincipal user: UserPrincipal, @RequestParam(defaultValue = "20") limit: Int) =
+        completedOrders.history(user.id, limit)
 }

@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.example.backend.common.util.RedisOrderQueue
+import org.example.backend.common.util.RedisCompletionQueue
 import org.example.backend.enums.OutboxEventStatus
 import org.example.backend.enums.OutboxEventType
 import org.example.backend.exchange.domain.OutboxEvent
@@ -15,10 +16,25 @@ import org.example.backend.exchange.repository.OutboxEventRepository
 class OutboxEventPublisherTest : FunSpec({
     val repository = mockk<OutboxEventRepository>()
     val queue = mockk<RedisOrderQueue>()
-    val publisher = OutboxEventPublisher(repository, queue)
+    val completionQueue = mockk<RedisCompletionQueue>()
+    val publisher = OutboxEventPublisher(repository, queue, completionQueue)
 
     beforeTest {
         clearAllMocks()
+        every { repository.findTop100ByStatusAndEventTypeOrderById(OutboxEventStatus.PENDING, OutboxEventType.ORDER_COMPLETED) } returns emptyList()
+    }
+
+    test("publishes completion separately from settlement queue") {
+        val event = OutboxEvent(id = 3L, aggregateId = 20L, eventType = OutboxEventType.ORDER_COMPLETED)
+        every { repository.findTop100ByStatusAndEventTypeOrderById(OutboxEventStatus.PENDING, OutboxEventType.ORDER_ACCEPTED) } returns emptyList()
+        every { repository.findTop100ByStatusAndEventTypeOrderById(OutboxEventStatus.PENDING, OutboxEventType.ORDER_COMPLETED) } returns listOf(event)
+        every { completionQueue.enqueue(3L) } returns true
+
+        publisher.publishPendingOrderEvents()
+
+        event.status shouldBe OutboxEventStatus.PUBLISHED
+        verify(exactly = 1) { completionQueue.enqueue(3L) }
+        verify(exactly = 0) { queue.enqueue(any(), any()) }
     }
 
     test("marks an outbox event published after Redis accepts it") {

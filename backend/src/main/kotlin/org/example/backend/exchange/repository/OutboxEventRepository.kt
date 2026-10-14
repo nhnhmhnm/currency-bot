@@ -10,4 +10,6 @@ interface OutboxEventRepository : JpaRepository<OutboxEvent, Long> {
         status: OutboxEventStatus,
         eventType: OutboxEventType
     ): List<OutboxEvent>
+
+    fun findTop100ByEventTypeAndIdGreaterThanOrderByIdAsc(eventType: OutboxEventType, id: Long): List<OutboxEvent>
 }
