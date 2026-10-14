@@ -40,7 +40,8 @@
 - **원자적 범위:** 현재 잔액, 지갑 이력, 거래 원본, 환전 요약 장부, 주문 완료, 완료 Outbox를 한 DB 트랜잭션으로 저장한다. 주문 내부의 출금·입금을 병렬화하지 않는다. 차익거래는 부모만 접수·예약하고 하위 체결은 같은 정산 트랜잭션에서 실행한다. 명시적 예약 행은 5번, 정식 전표·분개는 6번 범위다.
 - **결과 검증:** 어떤 중간 단계에서 예외가 나도 정산 변경이 모두 롤백되어야 한다. 공통 계산 결과만 공유하고 주문·체결·전표 DTO는 책임별로 유지한다.
 - **코드 근거:** [ExchangeOrderServiceImpl](../backend/src/main/kotlin/org/example/backend/exchange/service/ExchangeOrderServiceImpl.kt), [PostingPlan](../backend/src/main/kotlin/org/example/backend/exchange/service/PostingPlan.kt), [PostingService](../backend/src/main/kotlin/org/example/backend/exchange/service/PostingService.kt).
-- **실제 결과 (2026-10-14):** BUY·SELL의 다중 이체 호출과 공개 즉시 체결 경로를 제거했다. PostingPlan은 통화별 `회사 현금 변화 = 고객 지갑 변화 + 수수료 수익 변화`를 검사하고, PostingService는 모든 대상 행을 잠근 후 한 트랜잭션에서 기장한다. 정상 완료 Outbox는 주문별로 저장하며 차익거래 하위 주문은 별도 완료 이벤트를 만들지 않는다. 회사 현금 부족·장부 기록 실패 시 이력·잔액·거래·완료 이벤트까지 롤백되고, 서로 다른 사용자 BUY/SELL 동시 정산과 중복 전달이 격리된 MySQL·Redis 테스트에서 통과했다. 실제 교착 강제 재현과 부하 수치는 아직 없으며 완료 이벤트 발행·후처리는 7번에서 구현한다.
+- **실제 결과 (2026-10-14):** BUY·SELL의 다중 이체 호출과 공개 즉시 체결 경로를 제거했다. PostingPlan은 통화별 `회사 현금 변화 = 고객 지갑 변화 + 수수료 수익 변화`를 검사하고, PostingService는 모든 대상 행을 잠근 후 한 트랜잭션에서 기장한다. 정상 완료 Outbox는 주문별로 저장하며 차익거래 하위 주문은 별도 완료 이벤트를 만들지 않는다. 회사 현금 부족·장부 기록 실패 시 이력·잔액·거래·완료 이벤트까지 롤백되고, 서로 다른 사용자 BUY/SELL 동시 정산과 중복 전달이 격리된 MySQL·Redis 테스트에서 통과했다. 완료 이벤트 발행·후처리는 7번에서 구현한다.
+- **추가 검증 (2026-10-14):** 테스트에서만 KRW·USD 회사 계정을 역순 선잠금해 실제 BUY·SELL 정산 간 InnoDB 교착(`SQLSTATE 40001`, 오류 1213)을 재현했다. 피해 주문은 접수 상태로 롤백되고 거래·장부·완료 이벤트가 생기지 않았으며, 접수 Outbox의 Redis 재전달 후 두 주문이 각각 한 번만 정산됐다. Worker가 직접 1213을 받아 지연 재시도를 계획하는 경로는 별도 모의 예외 테스트로 검증했다. `verify-local-infra.ps1 -IncludeLoadBaseline`의 로컬 단일 Worker 20명·100건 동시 접수 버스트 2회에서 접수 671~802ms, 큐 발행 363~448ms, 정산 5.11~5.20초(19.23~19.55건/초), 접수→완료 p95 5.34~5.57초였다. 100건 모두 오류·중복·잔액 불일치가 없었다. HTTP 계층, 지속 도착률, 다중 Worker, 부하 한계와 실제 은행 연동은 측정하지 않았다.
 
 ## 5. 접수 시 자금·한도 예약과 견적 확정
 
@@ -67,11 +68,11 @@
 
 ## 8. 외부 연계와 실제 결과 검증
 
-- **현재 한계:** 로컬 MySQL 잠금과 Redis lease 일부를 검증했지만 프로세스·Redis 강제 종료, 실제 은행 연동, 운영 스키마 전환과 성능은 입증하지 못했다. 모의 은행 잔액 처리는 실제 은행 연동과 구분해야 한다.
+- **현재 한계:** 로컬 MySQL 잠금·Redis lease·단일 Worker 100건 버스트를 검증했지만 프로세스·Redis 강제 종료, 실제 은행 연동, 운영 스키마 전환과 지속 부하 성능은 입증하지 못했다. 모의 은행 잔액 처리는 실제 은행 연동과 구분해야 한다.
 - **개선·근거:** 실제 MySQL·Redis 통합 테스트와 모의 은행을 사용한다. 은행 요청 ID, 결과 조회, 대사를 구현해 은행 성공 후 응답 타임아웃을 재현한다. 외부 결과 불명은 바로 실패 확정하거나 예약 해제하지 않는다.
 - **필수 검증:** 단계별 롤백, 잔액 초과 동시 주문, 중복 요청, Worker 강제 종료, 한도·JPY 고시 단위·반올림 경계, 대사 배치 재실행. 수동 재처리는 권한·사유·결과를 감사 기록으로 남긴다.
 - **배포 기준:** 스키마를 단계적으로 추가하고 기존 활성 주문·예약·큐를 대사 후 전환한다. 과거 요약으로 상세 분개를 임의 복원하지 않는다. 기존 주문 소진과 롤백 절차를 검증한다.
-- **실제 결과 기록:** 수정 커밋 `da7f3a0`, 테스트 커밋 `79c840e`. 3번 추가 검증 후 `backend/scripts/verify-local-infra.ps1`로 MySQL 9.4 (`REPEATABLE-READ`)·Redis에서 20개 통과, `backend/gradlew.bat test --no-daemon --rerun-tasks`로 H2·mock 71개 통과·실환경 전용 4개 건너뜀(2026-10-13). 테스트 후 전용 MySQL 스키마 테이블 수와 Redis DB 15 키 수는 모두 0이다. 기존 `cuunit` 이관, OS 강제 종료·Redis 재시작·성능 수치는 아직 없다. MSA 확장보다 이 증거를 우선한다.
+- **실제 결과 기록:** 수정 커밋 `da7f3a0`, 테스트 커밋 `79c840e` 이후 4번 추가 검증까지 `backend/scripts/verify-local-infra.ps1 -IncludeLoadBaseline`로 MySQL 9.4 (`REPEATABLE-READ`)·Redis 25개 통과, `backend/gradlew.bat test --no-daemon --rerun-tasks`로 H2·mock 76개 통과·실환경 전용 6개 건너뜀(2026-10-14). 테스트 후 전용 MySQL 스키마 테이블 수와 Redis DB 15 키 수는 모두 0이다. 기존 `cuunit` 이관, OS 강제 종료·Redis 재시작·지속 부하 측정은 아직 없다. MSA 확장보다 이 증거를 우선한다.
 
 ## 9. 최종 처리 흐름
 
