@@ -51,10 +51,13 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.sql.DriverManager
 import java.sql.DatabaseMetaData
+import java.sql.SQLException
 import java.sql.Types
 import java.time.Duration
 import java.time.Instant
@@ -129,6 +132,12 @@ class ExchangeSettlementRollbackIntegrationTest {
 
     @Autowired
     private lateinit var orderWorker: OrderWorker
+
+    @Autowired
+    private lateinit var outboxEventPublisher: OutboxEventPublisher
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
 
     @Autowired
     private lateinit var redisTemplate: StringRedisTemplate
@@ -470,6 +479,131 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `real InnoDB deadlock rolls back one order and Redis replay settles it once`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+        insertExchangeUser(SECOND_USER_ID, BigDecimal.ZERO, BigDecimal("100"))
+        val buy = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "deadlock-buy")
+        val sell = exchangeOrderService.requestSellOrder(SECOND_USER_ID, "USD", BigDecimal("10"), "deadlock-sell")
+        val orders = listOf(buy, sell)
+        val firstLocks = listOf(CompanyAccount.KRW_ACCOUNT, CompanyAccount.USD_ACCOUNT)
+        val bothLocked = CountDownLatch(2)
+
+        try {
+            val attempts = runConcurrently(2) { index ->
+                TransactionTemplate(transactionManager).executeWithoutResult {
+                    jdbcTemplate.queryForObject(
+                        "select balance from internal_account where code = ? for update",
+                        BigDecimal::class.java,
+                        firstLocks[index].name
+                    )
+                    bothLocked.countDown()
+                    check(bothLocked.await(5, TimeUnit.SECONDS)) { "Both initial locks were not acquired" }
+                    exchangeOrderService.processQueuedOrder(orders[index].id)
+                }
+            }
+
+            attempts.count { it.isSuccess } shouldBe 1
+            val victimIndex = attempts.indexOfFirst { it.isFailure }
+            val failure = requireNotNull(attempts[victimIndex].exceptionOrNull())
+            val sqlFailure = generateSequence(failure) { it.cause }
+                .filterIsInstance<SQLException>().firstOrNull()
+            check(sqlFailure != null) { "Expected an InnoDB deadlock error" }
+            sqlFailure.sqlState shouldBe "40001"
+            sqlFailure.errorCode shouldBe 1213
+            exchangeOrderRepository.findById(orders[victimIndex].id).orElseThrow().status shouldBe OrderStatus.QUEUED
+            exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 1
+            transactionRepository.count() shouldBe 2L
+            exchangeLedgerRepository.count() shouldBe 1L
+            outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_COMPLETED } shouldBe 1
+
+            outboxEventPublisher.publishPendingOrderEvents()
+            orderWorker.processQueue()
+
+            exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 2
+            transactionRepository.count() shouldBe 4L
+            exchangeLedgerRepository.count() shouldBe 2L
+            outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_COMPLETED } shouldBe 2
+            walletBalance(KRW_ID).compareTo(BigDecimal("900000")) shouldBe 0
+            walletBalance(USD_ID).compareTo(BigDecimal("176.92")) shouldBe 0
+            walletRepository.findByUserIdAndCurrencyId(SECOND_USER_ID, KRW_ID)!!.balance
+                .compareTo(BigDecimal("12999")) shouldBe 0
+            walletRepository.findByUserIdAndCurrencyId(SECOND_USER_ID, USD_ID)!!.balance
+                .compareTo(BigDecimal("90")) shouldBe 0
+            companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(BigDecimal("999913003")) shouldBe 0
+            companyBalance(CompanyAccount.USD_ACCOUNT).compareTo(BigDecimal("1000066.92")) shouldBe 0
+            companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal("4")) shouldBe 0
+            redisOrderQueue.claim() shouldBe null
+            println("REAL_DEADLOCK victim_order_id=${orders[victimIndex].id} sqlstate=${sqlFailure.sqlState} code=${sqlFailure.errorCode} replay=settled_once")
+        } finally {
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    @Test
+    fun `real single worker baseline measures a hundred accepted and settled orders`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        assumeTrue(System.getenv("RUN_LOAD_BASELINE_TESTS") == "true")
+        check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+        for (index in 1 until 20) {
+            insertExchangeUser(1000L + index, USER_KRW_BALANCE, USER_USD_BALANCE)
+        }
+
+        try {
+            val admissionStart = System.nanoTime()
+            val requests = runConcurrently(20) { index ->
+                val userId = if (index == 0) USER_ID else 1000L + index
+                (0 until 5).map { orderIndex ->
+                    exchangeOrderService.requestBuyOrder(
+                        userId, "USD", ORDER_AMOUNT, "load-$userId-$orderIndex"
+                    )
+                }
+            }.flatMap { it.getOrThrow() }
+            val admissionMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - admissionStart)
+            requests.size shouldBe 100
+
+            val publishStart = System.nanoTime()
+            outboxEventPublisher.publishPendingOrderEvents()
+            val publishMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - publishStart)
+
+            val settlementStart = System.nanoTime()
+            orderWorker.processQueue()
+            val settlementMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - settlementStart)
+
+            val orders = exchangeOrderRepository.findAll()
+            orders.size shouldBe 100
+            orders.count { it.status == OrderStatus.SETTLED && it.retryAttempts == 0 } shouldBe 100
+            transactionRepository.count() shouldBe 200L
+            exchangeLedgerRepository.count() shouldBe 100L
+            walletFxHistoryRepository.count() shouldBe 300L
+            outboxEventRepository.count() shouldBe 200L
+            walletBalance(KRW_ID).compareTo(BigDecimal("500000")) shouldBe 0
+            walletBalance(USD_ID).compareTo(BigDecimal("484.60")) shouldBe 0
+            companyBalance(CompanyAccount.KRW_ACCOUNT)
+                .compareTo(COMPANY_KRW_BALANCE.subtract(BigDecimal("9999700"))) shouldBe 0
+            companyBalance(CompanyAccount.USD_ACCOUNT)
+                .compareTo(COMPANY_USD_BALANCE.add(BigDecimal("7692"))) shouldBe 0
+            companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal("300")) shouldBe 0
+            redisOrderQueue.claim() shouldBe null
+
+            val completionMs = orders.map {
+                Duration.between(requireNotNull(it.requestedAt), requireNotNull(it.completedAt)).toMillis()
+            }.sorted()
+            val throughput = String.format(java.util.Locale.ROOT, "%.2f", 100_000.0 / settlementMs)
+            println(
+                "LOAD_BASELINE orders=100 users=20 admission_ms=$admissionMs publish_ms=$publishMs " +
+                    "settlement_ms=$settlementMs settlement_orders_per_sec=$throughput " +
+                    "completion_p50_ms=${completionMs[49]} completion_p95_ms=${completionMs[94]} " +
+                    "completion_max_ms=${completionMs.last()}"
+            )
+        } finally {
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    @Test
     fun `real Redis lease rejects stale ACK and recovers deferred messages`() {
         assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
         check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
@@ -567,19 +701,7 @@ class ExchangeSettlementRollbackIntegrationTest {
 
     @Test
     fun `opposite direction orders for different users settle with one lock order`() {
-        jdbcTemplate.update(
-            "insert into $quotedUserTable (id, device, password, name, phone, type, is_active, created_at) " +
-                "values (?, ?, ?, ?, ?, ?, ?, current_timestamp)",
-            SECOND_USER_ID, "second-device", "password", "second", "01000000011", "GENERAL", true
-        )
-        jdbcTemplate.update(
-            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
-            SECOND_USER_ID, KRW_ID, BigDecimal.ZERO
-        )
-        jdbcTemplate.update(
-            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
-            SECOND_USER_ID, USD_ID, BigDecimal("100")
-        )
+        insertExchangeUser(SECOND_USER_ID, BigDecimal.ZERO, BigDecimal("100"))
         val buy = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "opposite-buy")
         val sell = exchangeOrderService.requestSellOrder(SECOND_USER_ID, "USD", BigDecimal("10"), "opposite-sell")
 
@@ -873,6 +995,28 @@ class ExchangeSettlementRollbackIntegrationTest {
 
     private fun insertCompanyAccount(code: CompanyAccount, balance: BigDecimal) {
         internalAccountRepository.save(InternalAccount(code = code, currencyId = code.currencyId, balance = balance))
+    }
+
+    private fun insertExchangeUser(userId: Long, krwBalance: BigDecimal, usdBalance: BigDecimal) {
+        jdbcTemplate.update(
+            "insert into $quotedUserTable (id, device, password, name, phone, type, is_active, created_at) " +
+                "values (?, ?, ?, ?, ?, ?, ?, current_timestamp)",
+            userId,
+            "exchange-test-$userId",
+            "password",
+            "exchange-test-$userId",
+            "010${(50000000L + userId).toString().padStart(8, '0')}",
+            "GENERAL",
+            true
+        )
+        jdbcTemplate.update(
+            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
+            userId, KRW_ID, krwBalance
+        )
+        jdbcTemplate.update(
+            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
+            userId, USD_ID, usdBalance
+        )
     }
 
     private fun companyBalance(code: CompanyAccount): BigDecimal {

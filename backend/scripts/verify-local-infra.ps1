@@ -1,3 +1,5 @@
+param([switch]$IncludeLoadBaseline)
+
 $ErrorActionPreference = "Stop"
 $database = "currency_bot_integration_test"
 
@@ -29,18 +31,24 @@ if ($LASTEXITCODE -ne 0 -or $redisSize -ne "0") {
 
 $previousPassword = [Environment]::GetEnvironmentVariable("CURRENCY_TEST_MYSQL_PASSWORD", "Process")
 $previousFlag = [Environment]::GetEnvironmentVariable("RUN_REAL_INFRA_TESTS", "Process")
+$previousLoadFlag = [Environment]::GetEnvironmentVariable("RUN_LOAD_BASELINE_TESTS", "Process")
 try {
     $env:CURRENCY_TEST_MYSQL_PASSWORD = $rootPassword
     $env:RUN_REAL_INFRA_TESTS = "true"
+    $env:RUN_LOAD_BASELINE_TESTS = if ($IncludeLoadBaseline) { "true" } else { "false" }
     Push-Location (Join-Path $PSScriptRoot "..")
     try {
         .\gradlew.bat test --no-daemon --rerun-tasks --tests org.example.backend.exchange.service.ExchangeSettlementRollbackIntegrationTest
         if ($LASTEXITCODE -ne 0) { throw "Real infrastructure tests failed" }
+        $report = Join-Path (Get-Location) "build/test-results/test/TEST-org.example.backend.exchange.service.ExchangeSettlementRollbackIntegrationTest.xml"
+        Select-String -Path $report -Pattern '^(REAL_DEADLOCK|LOAD_BASELINE)' |
+            ForEach-Object { Write-Output $_.Line }
     } finally {
         Pop-Location
     }
 } finally {
     [Environment]::SetEnvironmentVariable("CURRENCY_TEST_MYSQL_PASSWORD", $previousPassword, "Process")
     [Environment]::SetEnvironmentVariable("RUN_REAL_INFRA_TESTS", $previousFlag, "Process")
+    [Environment]::SetEnvironmentVariable("RUN_LOAD_BASELINE_TESTS", $previousLoadFlag, "Process")
     $rootPassword = $null
 }
