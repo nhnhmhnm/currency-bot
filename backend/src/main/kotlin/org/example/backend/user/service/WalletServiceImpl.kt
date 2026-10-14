@@ -7,6 +7,10 @@ import org.example.backend.exception.UserException
 import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.finance.repository.InternalAccountRepository
+import org.example.backend.finance.domain.JournalSource
+import org.example.backend.finance.domain.LedgerAccountType
+import org.example.backend.finance.service.BalanceMovement
+import org.example.backend.finance.service.JournalService
 import org.example.backend.user.dto.DepositWithdrawalCommand
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.UserRepository
@@ -27,6 +31,7 @@ class WalletServiceImpl(
     private val currencyRepository: CurrencyRepository,
     private val reservationRepository: ExchangeReservationRepository,
     private val depositWithdrawalService: DepositWithdrawalService,
+    private val journalService: JournalService,
     @Value("\${app.bank.simulation-enabled:false}") private val bankSimulationEnabled: Boolean
 ) : WalletService {
 
@@ -79,13 +84,21 @@ class WalletServiceImpl(
         internalAccountRepository.save(cashAccount)
         walletRepository.save(wallet)
 
-        depositWithdrawalService.record(
+        val transfer = depositWithdrawalService.record(
             DepositWithdrawalCommand(
                 userId = userId,
                 walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
                 currencyId = currencyId,
                 amount = amount,
                 type = WalletTransactionType.DEPOSIT
+            )
+        )
+        journalService.record(
+            JournalSource.WALLET_TRANSFER,
+            transfer.id,
+            listOf(
+                BalanceMovement(LedgerAccountType.COMPANY_CASH, cashAccount.id!!, currencyId, cashAccount.balance.minus(amount), cashAccount.balance),
+                BalanceMovement(LedgerAccountType.CUSTOMER_LIABILITY, wallet.id!!, currencyId, wallet.balance.minus(amount), wallet.balance)
             )
         )
 
@@ -120,13 +133,21 @@ class WalletServiceImpl(
         internalAccountRepository.save(cashAccount)
         simulatedBankBalanceRepository.save(bankBalance)
 
-        depositWithdrawalService.record(
+        val transfer = depositWithdrawalService.record(
             DepositWithdrawalCommand(
                 userId = userId,
                 walletId = wallet.id ?: throw UserException(ErrorCode.WALLET_NOT_FOUND),
                 currencyId = currencyId,
                 amount = amount,
                 type = WalletTransactionType.WITHDRAWAL
+            )
+        )
+        journalService.record(
+            JournalSource.WALLET_TRANSFER,
+            transfer.id,
+            listOf(
+                BalanceMovement(LedgerAccountType.COMPANY_CASH, cashAccount.id!!, currencyId, cashAccount.balance.plus(amount), cashAccount.balance),
+                BalanceMovement(LedgerAccountType.CUSTOMER_LIABILITY, wallet.id!!, currencyId, wallet.balance.plus(amount), wallet.balance)
             )
         )
 

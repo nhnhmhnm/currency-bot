@@ -7,6 +7,7 @@ import org.example.backend.exception.UserException
 import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.finance.repository.InternalAccountRepository
+import org.example.backend.finance.service.JournalService
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.SimulatedBankBalanceRepository
 import org.example.backend.user.repository.UserRepository
@@ -27,6 +28,7 @@ class WalletServiceImplTest {
             currencyRepository = mockk<CurrencyRepository>(),
             reservationRepository = mockk<ExchangeReservationRepository>(),
             depositWithdrawalService = mockk<DepositWithdrawalService>(),
+            journalService = mockk<JournalService>(),
             bankSimulationEnabled = false
         )
 

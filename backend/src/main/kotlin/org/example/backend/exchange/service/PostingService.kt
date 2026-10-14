@@ -3,6 +3,10 @@ package org.example.backend.exchange.service
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.finance.repository.InternalAccountRepository
+import org.example.backend.finance.domain.JournalSource
+import org.example.backend.finance.domain.LedgerAccountType
+import org.example.backend.finance.service.BalanceMovement
+import org.example.backend.finance.service.JournalService
 import org.example.backend.user.dto.WalletFxCommand
 import org.example.backend.user.repository.WalletRepository
 import org.example.backend.user.service.WalletFxHistoryService
@@ -15,7 +19,8 @@ import java.math.BigDecimal
 class PostingService(
     private val walletRepository: WalletRepository,
     private val internalAccountRepository: InternalAccountRepository,
-    private val walletFxHistoryService: WalletFxHistoryService
+    private val walletFxHistoryService: WalletFxHistoryService,
+    private val journalService: JournalService
 ) {
     @Transactional(propagation = Propagation.MANDATORY)
     fun post(plan: PostingPlan) {
@@ -28,6 +33,8 @@ class PostingService(
                 ?.takeIf { it.currencyId == code.currencyId }
                 ?: throw UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND)
         }
+        val walletBefore = wallets.mapValues { it.value.balance }
+        val accountBefore = accounts.mapValues { it.value.balance }
 
         for (posting in plan.walletPostings) {
             val wallet = wallets.getValue(posting.currencyId)
@@ -52,5 +59,17 @@ class PostingService(
             if (nextBalance < BigDecimal.ZERO) throw UserException(ErrorCode.COMPANY_LIQUIDITY_INSUFFICIENT)
             account.balance = nextBalance
         }
+        val movements = wallets.map { (currencyId, wallet) ->
+            BalanceMovement(LedgerAccountType.CUSTOMER_LIABILITY, wallet.id!!, currencyId, walletBefore.getValue(currencyId), wallet.balance)
+        } + accounts.map { (code, account) ->
+            BalanceMovement(
+                if (code == org.example.backend.enums.CompanyAccount.COMMISSION_ACCOUNT) LedgerAccountType.COMMISSION_REVENUE else LedgerAccountType.COMPANY_CASH,
+                account.id!!,
+                code.currencyId,
+                accountBefore.getValue(code),
+                account.balance
+            )
+        }
+        journalService.record(JournalSource.EXCHANGE_ORDER, plan.orderId, movements.filter { it.delta.signum() != 0 })
     }
 }

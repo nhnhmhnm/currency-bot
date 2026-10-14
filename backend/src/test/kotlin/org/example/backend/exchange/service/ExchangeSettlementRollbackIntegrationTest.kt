@@ -24,6 +24,11 @@ import org.example.backend.exchange.repository.TransactionRepository
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.domain.InternalAccount
 import org.example.backend.finance.repository.InternalAccountRepository
+import org.example.backend.finance.repository.JournalRepository
+import org.example.backend.finance.repository.JournalLineRepository
+import org.example.backend.finance.service.JournalReconciliationService
+import org.example.backend.finance.domain.JournalSource
+import org.example.backend.finance.domain.Journal
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.SimulatedBankBalanceRepository
 import org.example.backend.user.repository.WalletFxHistoryRepository
@@ -110,6 +115,15 @@ class ExchangeSettlementRollbackIntegrationTest {
     private lateinit var internalAccountRepository: InternalAccountRepository
 
     @Autowired
+    private lateinit var journalRepository: JournalRepository
+
+    @Autowired
+    private lateinit var journalLineRepository: JournalLineRepository
+
+    @Autowired
+    private lateinit var journalReconciliationService: JournalReconciliationService
+
+    @Autowired
     private lateinit var simulatedBankBalanceRepository: SimulatedBankBalanceRepository
 
     @Autowired
@@ -162,6 +176,8 @@ class ExchangeSettlementRollbackIntegrationTest {
         fixedExchangeService.buyBaseRate = RATE
         fixedExchangeService.sellBaseRate = RATE
         walletFxHistoryRepository.deleteAll()
+        jdbcTemplate.update("delete from journal_line")
+        jdbcTemplate.update("delete from journal")
         jdbcTemplate.update("delete from deposit_withdrawal")
         exchangeLedgerRepository.deleteAll()
         transactionRepository.deleteAll()
@@ -275,6 +291,9 @@ class ExchangeSettlementRollbackIntegrationTest {
         reservationRepository.sumActiveFunds(USER_ID, KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
         transactionRepository.count() shouldBe 2L
         exchangeLedgerRepository.count() shouldBe 1L
+        journalRepository.count() shouldBe 1L
+        journalLineRepository.count() shouldBe 5L
+        journalReconciliationService.audit().balanced shouldBe true
     }
 
     @Test
@@ -349,8 +368,43 @@ class ExchangeSettlementRollbackIntegrationTest {
         transactionRepository.count() shouldBe 0L
         exchangeLedgerRepository.count() shouldBe 0L
         walletFxHistoryRepository.count() shouldBe 0L
+        journalRepository.count() shouldBe 0L
+        journalLineRepository.count() shouldBe 0L
         outboxEventRepository.count() shouldBe 0L
         exchangeOrderRepository.findById(order.id!!).orElseThrow().status shouldBe OrderStatus.QUEUED
+    }
+
+    @Test
+    fun `reconciliation detects a missing settlement journal and balance drift`() {
+        val accepted = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "journal-reconcile")
+        exchangeOrderService.processQueuedOrder(accepted.id)
+        journalRepository.existsBySourceTypeAndSourceId(JournalSource.EXCHANGE_ORDER, accepted.id) shouldBe true
+        journalReconciliationService.audit().balanced shouldBe true
+
+        val cash = internalAccountRepository.findByCode(CompanyAccount.KRW_ACCOUNT)!!
+        cash.balance = cash.balance.add(BigDecimal.ONE)
+        internalAccountRepository.saveAndFlush(cash)
+        journalReconciliationService.audit().issues.any { it.contains("differs from journal") } shouldBe true
+
+        journalLineRepository.deleteAll()
+        journalRepository.deleteAll()
+        journalReconciliationService.audit().issues.any { it.contains("has no journal") } shouldBe true
+    }
+
+    @Test
+    fun `duplicate settlement journal rejects the entire balance movement`() {
+        val accepted = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "journal-unique")
+        journalRepository.saveAndFlush(Journal(sourceType = JournalSource.EXCHANGE_ORDER, sourceId = accepted.id))
+
+        assertThrows<Exception> { exchangeOrderService.processQueuedOrder(accepted.id) }
+
+        exchangeOrderRepository.findById(accepted.id).orElseThrow().status shouldBe OrderStatus.QUEUED
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(COMPANY_KRW_BALANCE) shouldBe 0
+        walletFxHistoryRepository.count() shouldBe 0L
+        transactionRepository.count() shouldBe 0L
+        journalRepository.count() shouldBe 1L
+        journalReconciliationService.audit().issues.any { it.contains("has no settled order") } shouldBe true
     }
 
     @Test
@@ -817,6 +871,9 @@ class ExchangeSettlementRollbackIntegrationTest {
         exchangeLedgerRepository.count() shouldBe 2L
         outboxEventRepository.count() shouldBe 2L
         outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_COMPLETED } shouldBe 1
+        journalRepository.count() shouldBe 2L
+        journalRepository.existsBySourceTypeAndSourceId(JournalSource.EXCHANGE_ORDER, parent.id) shouldBe false
+        journalReconciliationService.audit().balanced shouldBe true
         reservationRepository.findById(parent.id).orElseThrow().status shouldBe ReservationStatus.CONSUMED
         reservationRepository.sumActiveFunds(USER_ID, KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
         walletBalance(KRW_ID).compareTo(BigDecimal("1007660")) shouldBe 0
@@ -900,6 +957,9 @@ class ExchangeSettlementRollbackIntegrationTest {
         simulatedBankBalance().compareTo(BigDecimal("400000")) shouldBe 0
         companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(COMPANY_KRW_BALANCE.add(BigDecimal("100000"))) shouldBe 0
         jdbcTemplate.queryForObject("select count(*) from deposit_withdrawal", Long::class.java) shouldBe 1L
+        journalRepository.count() shouldBe 1L
+        journalLineRepository.count() shouldBe 2L
+        journalReconciliationService.audit().balanced shouldBe true
     }
 
     @Test
@@ -919,6 +979,8 @@ class ExchangeSettlementRollbackIntegrationTest {
 
         walletService.withdrawToAccount(USER_ID, KRW_ID, BigDecimal("50000"))
         assertBalancedChange(before, BigDecimal("50000"))
+        journalRepository.count() shouldBe 4L
+        journalReconciliationService.audit().balanced shouldBe true
 
         exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 2
         transactionRepository.count() shouldBe 4L
