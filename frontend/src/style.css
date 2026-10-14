@@ -16,6 +16,10 @@
 .header-currency-tab.selected { border-bottom-color:var(--purple); color:var(--purple); }
 .header-currency-tab:hover { color:var(--purple); }
 .unit-label { color:#96909f; font-size:11px; white-space:nowrap; }
+.dashboard-view-tabs { display:flex; gap:24px; border-bottom:1px solid var(--line); }
+.dashboard-view-tabs button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:42px; padding:0 4px 10px; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); font-size:13px; font-weight:600; white-space:nowrap; }
+.dashboard-view-tabs button.selected { border-bottom-color:var(--purple); color:var(--text, #242335); }
+.dashboard-view-tabs button:hover { color:var(--purple); }
 .dashboard-grid { display:grid; grid-template-columns:minmax(0,1fr) 326px; gap:32px; padding-top:27px; }
 .market-column,.trade-column { min-width:0; }
 .rate-summary { display:grid; grid-template-columns:1fr 1fr .65fr; padding:2px 0 28px; border-bottom:1px solid var(--line); }
@@ -35,6 +39,7 @@
 .metric-checks label { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:11px; color:#8b8299; cursor:pointer; }
 .metric-checks label.checked { color:#4c405f; font-weight:600; }
 .metric-checks input { width:14px; height:14px; margin:0; accent-color:var(--purple); cursor:pointer; }
+.chart-metric-label { display:inline-flex; align-items:center; gap:7px; color:var(--base, #16836d); font-size:11px; font-weight:600; }
 .metric-line { display:inline-block; width:17px; height:2px; background:#998ea8; }
 .metric-line.sellRate { background:repeating-linear-gradient(to right,#998ea8 0 6px,transparent 6px 10px); }
 .metric-line.baseRate { background:repeating-linear-gradient(to right,#998ea8 0 2px,transparent 2px 5px); }

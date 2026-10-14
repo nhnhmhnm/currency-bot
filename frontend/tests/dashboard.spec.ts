@@ -18,8 +18,8 @@ test('dashboard renders chart, local visual assets and responsive layout', async
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await expect(page.locator('.recharts-line-curve')).toHaveCount(4);
-  await expect(page.locator('.limit-number')).toContainText('0/ 4회');
+  await expect(page.locator('.recharts-line-curve')).toHaveCount(8);
+  await expect(page.locator('.limit-number')).toHaveCount(0);
   await expect(page.getByRole('row')).toHaveCount(5);
   expect(await page.locator('.header-currency-tab img').evaluateAll(images => images.every(image => (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -27,23 +27,25 @@ test('dashboard renders chart, local visual assets and responsive layout', async
   await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true });
   const buyRate = page.getByRole('checkbox', { name: '전신환 매도율' });
   const sellRate = page.getByRole('checkbox', { name: '전신환 매입율' });
-  const baseRate = page.getByRole('checkbox', { name: '매매기준율' });
   await expect(buyRate).toBeChecked();
-  await sellRate.check();
+  await expect(sellRate).toBeChecked();
   await expect(page.locator('.recharts-line-curve')).toHaveCount(8);
-  await baseRate.check();
-  await expect(page.locator('.recharts-line-curve')).toHaveCount(12);
-  expect(await page.locator('.recharts-line-curve[stroke-dasharray="8 4"]').count()).toBe(3);
-  expect(await page.locator('.recharts-line-curve[stroke-dasharray="2 4"]').count()).toBe(3);
+  expect(await page.locator('.recharts-line-curve[stroke-dasharray="8 4"]').count()).toBe(2);
+  expect(await page.locator('.recharts-line-curve[stroke-dasharray="2 4"]').count()).toBe(2);
   expect(await page.locator('.recharts-line-curve[stroke="var(--buy)"]').count()).toBe(4);
   expect(await page.locator('.recharts-line-curve[stroke="var(--sell)"]').count()).toBe(4);
-  expect(await page.locator('.recharts-line-curve[stroke="var(--base)"]').count()).toBe(4);
+  expect(await page.locator('.recharts-line-curve[stroke="var(--base)"]').count()).toBe(0);
   await buyRate.uncheck();
   await sellRate.uncheck();
-  await baseRate.uncheck();
   await expect(page.getByText('표시할 환율을 선택해 주세요')).toBeVisible();
-  await baseRate.check();
+  await page.getByRole('button', { name: '차익거래', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: '매매기준율' })).toHaveCount(0);
+  await expect(page.locator('.limit-number')).toContainText('0/ 4회');
   await expect(page.locator('.recharts-line-curve')).toHaveCount(4);
+  expect(await page.locator('.recharts-line-curve[stroke="var(--base)"]').count()).toBe(4);
+  await page.getByRole('button', { name: '외화 구매·판매' }).click();
+  await expect(page.getByText('표시할 환율을 선택해 주세요')).toBeVisible();
+  await buyRate.check();
   await page.getByRole('tab', { name: /JPY/ }).click();
   await expect(page.getByRole('tab', { name: /JPY/ })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.unit-label')).toContainText('100 JPY');
@@ -63,6 +65,8 @@ test('order amount follows the currency quotation unit and preserves manual edit
   await expect(amount).toHaveValue('50000');
   await page.getByRole('button', { name: '판매', exact: true }).click();
   await expect(amount).toHaveValue('1');
+  await page.getByRole('button', { name: '외화 구매·판매' }).click();
+  await expect(amount).toHaveValue('1');
   await page.getByRole('tab', { name: /JPY/ }).click();
   await expect(amount).toHaveValue('100');
   await page.getByRole('button', { name: '구매', exact: true }).click();
@@ -73,7 +77,7 @@ test('system theme switches surfaces and keeps rate colors distinct', async ({ p
   await dashboard(page, { authenticated: true });
   await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
-  await expect(page.locator('.recharts-line-curve')).toHaveCount(4);
+  await expect(page.locator('.recharts-line-curve')).toHaveCount(8);
   const colors = async () => page.evaluate(() => {
     const root = getComputedStyle(document.documentElement);
     return ['--background', '--surface', '--purple', '--buy', '--sell', '--base'].map(name => root.getPropertyValue(name).trim());
@@ -84,10 +88,10 @@ test('system theme switches surfaces and keeps rate colors distinct', async ({ p
   const dark = await colors();
   await expect(page.locator('.confirmation')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('dark.png'), fullPage: true });
-  await page.getByRole('checkbox', { name: '전신환 매입율' }).check();
-  await page.getByRole('checkbox', { name: '매매기준율' }).check();
-  await expect(page.locator('.recharts-line-curve')).toHaveCount(12);
+  await page.getByRole('button', { name: '차익거래', exact: true }).click();
+  await expect(page.locator('.recharts-line-curve')).toHaveCount(4);
   await page.screenshot({ path: testInfo.outputPath('dark-all-rates.png'), fullPage: true });
+  await page.getByRole('button', { name: '외화 구매·판매' }).click();
   await page.getByRole('button', { name: '구매 주문 확인' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   expect(await page.locator('.confirmation').evaluate(element => getComputedStyle(element).backgroundColor))
@@ -123,7 +127,7 @@ test('buy, sell and arbitrage require confirmation and use separate endpoints', 
   await expect(page.getByRole('dialog')).toContainText('전신환 매입율');
   await page.getByRole('button', { name: '주문 접수', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: '매매기준율 재테크 주문', exact: true }).click();
+  await page.getByRole('button', { name: '차익거래', exact: true }).click();
   await expect(page.getByRole('textbox', { name: '주문 금액' })).toHaveValue('1000000');
   await expect(page.getByRole('textbox', { name: '주문 금액' })).toHaveAttribute('readonly', '');
   await expect(page.locator('.quote-details')).toContainText('수수료 차감 후 예상 순수익');
@@ -144,7 +148,7 @@ test('canceled arbitrage shows the rate-change reason after acceptance', async (
   await page.route('**/api/exchange/arbitrage?*', route => route.fulfill({ status: 202, contentType: 'text/plain', body: 'ARBITRAGE order accepted. orderId=42' }));
   await page.route('**/api/exchange/orders/42', route => route.fulfill({ json: { status: 'CANCELED', cancellationReason: 'RATE_CHANGED' } }));
   await page.goto('/');
-  await page.getByRole('button', { name: '매매기준율 재테크 주문', exact: true }).click();
+  await page.getByRole('button', { name: '차익거래', exact: true }).click();
   await page.getByRole('button', { name: '재테크 주문 확인' }).click();
   await expect(page.getByRole('dialog')).toContainText('수수료 차감 후 예상 순수익');
   await page.getByRole('button', { name: '주문 접수', exact: true }).click();
@@ -174,6 +178,7 @@ test('offline mode does not fabricate live data or permit sample trades', async 
   await page.goto('/');
   await expect(page.getByText('환율을 불러오지 못했습니다')).toBeVisible();
   await expect(page.getByLabel('주문 금액')).toHaveValue('0');
+  await page.getByRole('button', { name: '차익거래', exact: true }).click();
   await expect(page.locator('.limit-number')).toContainText('—');
   await page.getByRole('button', { name: '샘플 보기' }).click();
   await expect(page.getByText('샘플 · 실제 주문 불가')).toBeVisible();
@@ -208,5 +213,6 @@ test('small guest screen fits without page overflow and unknown quota stays unkn
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(page.getByRole('tab', { name: /USD/ })).toBeVisible();
   await expect(page.getByRole('tab', { name: /JPY/ })).toBeVisible();
+  await page.getByRole('button', { name: '차익거래', exact: true }).click();
   await expect(page.locator('.limit-number')).toContainText('—');
 });
