@@ -2,7 +2,7 @@
 
 목표: 입금·환전·출금을 정확하게 처리하고, 중복 요청이나 장애가 발생해도 자금과 기록을 복구할 수 있게 한다.
 
-상태: 1~3번은 구현하고 H2·mock 및 격리된 MySQL·Redis에서 검증했다. 기존 DB 이관과 4~8번은 계획이다. 실제 프로세스 강제 종료·Redis 재시작·성능·운영 스키마 전환은 아직 검증하지 않았다. 각 항목 구현 후 테스트 결과·측정값·커밋을 기록한다. 기대 효과를 완료 실적으로 표시하지 않는다.
+상태: 1~4번은 구현하고 H2·mock 및 격리된 MySQL·Redis에서 검증했다. 기존 DB 이관과 5~8번은 계획이다. 실제 프로세스 강제 종료·Redis 재시작·성능·운영 스키마 전환은 아직 검증하지 않았다. 각 항목 구현 후 테스트 결과·측정값·커밋을 기록한다. 기대 효과를 완료 실적으로 표시하지 않는다.
 
 ## 1. 일반 입출금 검증과 계좌 접근 통제
 
@@ -36,10 +36,11 @@
 ## 4. 정산 실행기와 잠금 규칙 통합
 
 - **현재 문제:** BUY·SELL에서 이체 호출을 나열하고 개별 이체마다 출금 측부터 잠근다. 반대 방향 거래 간 잠금 순서가 충돌할 수 있으며 접수 검증을 우회하는 즉시 처리 경로도 있다.
-- **개선·근거:** 금액·수수료를 계산하는 불변 PostingPlan과 실제 기장하는 PostingService를 분리한다. 모든 관련 계좌를 고정 순서로 잠그고 주문·사용자·예약 잠금 순서도 입출금·취소 경로와 통일한다. 교착 시 정산 트랜잭션 전체를 재시도한다.
-- **원자적 범위:** 잔액, 전표, 체결 원본, 예약 사용, 주문 완료, 완료 Outbox를 한 DB 트랜잭션으로 저장한다. 주문 내부의 출금·입금을 병렬화하지 않는다. 차익거래는 부모·하위 실행을 구분해 예약과 한도를 중복 적용하지 않는다.
+- **개선·근거:** 금액·수수료를 계산하는 PostingPlan과 실제 기장하는 PostingService를 분리한다. 정산은 주문 행→사용자→통화 ID순 지갑→코드순 내부 계정을 잠근다. 접수·입출금은 사용자→지갑을 먼저 잠그고 입출금만 외부 계좌→내부 계정→모의 은행 잔액을 잇는다. 동일 사용자 경합은 사용자 잠금으로 직렬화하고, 회사 공유 계정은 고정 순서로 잠근다. 교착 예외는 Worker가 정산 트랜잭션 전체를 새 시도에서 재실행한다.
+- **원자적 범위:** 현재 잔액, 지갑 이력, 거래 원본, 환전 요약 장부, 주문 완료, 완료 Outbox를 한 DB 트랜잭션으로 저장한다. 주문 내부의 출금·입금을 병렬화하지 않는다. 차익거래는 부모만 접수·예약하고 하위 체결은 같은 정산 트랜잭션에서 실행한다. 명시적 예약 행은 5번, 정식 전표·분개는 6번 범위다.
 - **결과 검증:** 어떤 중간 단계에서 예외가 나도 정산 변경이 모두 롤백되어야 한다. 공통 계산 결과만 공유하고 주문·체결·전표 DTO는 책임별로 유지한다.
-- **코드 근거:** [ExchangeOrderServiceImpl](../backend/src/main/kotlin/org/example/backend/exchange/service/ExchangeOrderServiceImpl.kt), [MoneyMovementServiceImpl](../backend/src/main/kotlin/org/example/backend/user/service/MoneyMovementServiceImpl.kt).
+- **코드 근거:** [ExchangeOrderServiceImpl](../backend/src/main/kotlin/org/example/backend/exchange/service/ExchangeOrderServiceImpl.kt), [PostingPlan](../backend/src/main/kotlin/org/example/backend/exchange/service/PostingPlan.kt), [PostingService](../backend/src/main/kotlin/org/example/backend/exchange/service/PostingService.kt).
+- **실제 결과 (2026-10-14):** BUY·SELL의 다중 이체 호출과 공개 즉시 체결 경로를 제거했다. PostingPlan은 통화별 `회사 현금 변화 = 고객 지갑 변화 + 수수료 수익 변화`를 검사하고, PostingService는 모든 대상 행을 잠근 후 한 트랜잭션에서 기장한다. 정상 완료 Outbox는 주문별로 저장하며 차익거래 하위 주문은 별도 완료 이벤트를 만들지 않는다. 회사 현금 부족·장부 기록 실패 시 이력·잔액·거래·완료 이벤트까지 롤백되고, 서로 다른 사용자 BUY/SELL 동시 정산과 중복 전달이 격리된 MySQL·Redis 테스트에서 통과했다. 실제 교착 강제 재현과 부하 수치는 아직 없으며 완료 이벤트 발행·후처리는 7번에서 구현한다.
 
 ## 5. 접수 시 자금·한도 예약과 견적 확정
 
