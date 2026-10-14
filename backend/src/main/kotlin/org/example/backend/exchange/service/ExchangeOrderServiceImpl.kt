@@ -1,7 +1,6 @@
 package org.example.backend.exchange.service
 
 import org.example.backend.common.util.toDto
-import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.ExchangeLedgerType
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
@@ -14,10 +13,7 @@ import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exchange.domain.OutboxEvent
 import org.example.backend.enums.OutboxEventType
 import org.example.backend.finance.domain.Currency
-import org.example.backend.finance.domain.InternalAccount
 import org.example.backend.finance.repository.CurrencyRepository
-import org.example.backend.finance.repository.InternalAccountRepository
-import org.example.backend.user.service.WalletService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
@@ -35,8 +31,7 @@ class ExchangeOrderServiceImpl(
     private val transactionService: TransactionService,
     private val ledgerService: ExchangeLedgerService,
     private val currencyRepository: CurrencyRepository,
-    private val walletService: WalletService,
-    private val internalAccountRepository: InternalAccountRepository,
+    private val postingService: PostingService,
     private val requestValidator: ExchangeOrderRequestValidator,
     private val outboxEventRepository: OutboxEventRepository
 ) : ExchangeOrderService {
@@ -159,60 +154,16 @@ class ExchangeOrderServiceImpl(
         return OrderRetryDecision(terminal = false, nextAttemptAt = order.nextAttemptAt)
     }
 
-    @Transactional
-    override fun buyOrder(
-        userId: Long,
-        currencyCode: String,
-        fromAmount: BigDecimal,
-        isArbitrage: Boolean
-    ): ExchangeOrderResponse {
-        val order = createProcessingOrder(
-            userId = userId,
-            orderType = OrderType.BUY,
-            fromCurrencyCode = "KRW",
-            toCurrencyCode = currencyCode,
-            fromAmount = fromAmount
-        )
-        return executeBuyOrder(order, isArbitrage)
-    }
-
-    @Transactional
-    override fun sellOrder(
-        userId: Long,
-        currencyCode: String,
-        fromAmount: BigDecimal,
-        isArbitrage: Boolean
-    ): ExchangeOrderResponse {
-        val order = createProcessingOrder(
-            userId = userId,
-            orderType = OrderType.SELL,
-            fromCurrencyCode = currencyCode,
-            toCurrencyCode = "KRW",
-            fromAmount = fromAmount
-        )
-        return executeSellOrder(order, isArbitrage)
-    }
-
-    @Transactional
-    override fun arbitrageOrder(
-        userId: Long,
-        currencyCode: String,
-        fromAmount: BigDecimal,
-        isArbitrage: Boolean
-    ): Pair<ExchangeOrderResponse, ExchangeOrderResponse> {
-        val buy = buyOrder(userId, currencyCode, fromAmount, true)
-        val sell = sellOrder(userId, currencyCode, buy.toAmount, true)
-        return buy to sell
-    }
-
     private fun executeArbitrageParentOrder(order: ExchangeOrder): ExchangeOrderResponse {
         val currency = currencyRepository.findById(order.toCurrencyId)
             .orElseThrow { IllegalStateException("Currency not found: ${order.toCurrencyId}") }
 
-        val (buy, sell) = arbitrageOrder(
-            userId = order.userId,
-            currencyCode = currency.code,
-            fromAmount = order.fromAmount,
+        val buy = executeBuyOrder(
+            createProcessingOrder(order.userId, OrderType.BUY, "KRW", currency.code, order.fromAmount),
+            isArbitrage = true
+        )
+        val sell = executeSellOrder(
+            createProcessingOrder(order.userId, OrderType.SELL, currency.code, "KRW", buy.toAmount),
             isArbitrage = true
         )
 
@@ -221,6 +172,7 @@ class ExchangeOrderServiceImpl(
         order.toAmount = sell.toAmount
         order.status = OrderStatus.SETTLED
         order.completedAt = LocalDateTime.now()
+        saveCompletedEvent(order)
 
         log.info(
             "arbitrage parent order[{}] settled by buyOrder={}, sellOrder={}",
@@ -263,25 +215,18 @@ class ExchangeOrderServiceImpl(
 
         order.toAmount = toAmount
 
-        val companyKRWAccount = findCompanyAccount(fromCurrency.id)
-        val companyFXAccount = findCompanyAccount(toCurrency.id)
-        val companyCommissionAccount = findCommissionAccount()
-
-        walletService.userToCompany(order.userId, fromCurrency.id, companyKRWAccount.id!!, exchangeAmount, order.id)
-
-        if (commissionAmount > BigDecimal.ZERO) {
-            walletService.userToCompany(
-                order.userId,
-                fromCurrency.id,
-                companyCommissionAccount.id!!,
-                commissionAmount,
-                order.id
+        postingService.post(
+            PostingPlan.buy(
+                orderId = order.id!!,
+                userId = order.userId,
+                fromCurrencyId = fromCurrency.id,
+                toCurrencyId = toCurrency.id,
+                fromAmount = order.fromAmount,
+                exchangeAmount = exchangeAmount,
+                toAmount = toAmount,
+                commissionAmount = commissionAmount
             )
-        }
-
-        walletService.bankToCompany(companyKRWAccount.id!!, bestRate.bankId, exchangeAmount.negate())
-        walletService.bankToCompany(companyFXAccount.id!!, bestRate.bankId, toAmount)
-        walletService.companyToUser(companyFXAccount.id!!, order.userId, toCurrency.id, toAmount, order.id)
+        )
 
         recordTransactions(
             userId = order.userId,
@@ -317,6 +262,7 @@ class ExchangeOrderServiceImpl(
 
         order.status = OrderStatus.SETTLED
         order.completedAt = LocalDateTime.now()
+        if (!isArbitrage) saveCompletedEvent(order)
 
         return order.toDto()
     }
@@ -352,19 +298,18 @@ class ExchangeOrderServiceImpl(
 
         order.toAmount = toAmount
 
-        val companyFXAccount = findCompanyAccount(fromCurrency.id)
-        val companyKRWAccount = findCompanyAccount(toCurrency.id)
-        val companyCommissionAccount = findCommissionAccount()
-
-        walletService.userToCompany(order.userId, fromCurrency.id, companyFXAccount.id!!, order.fromAmount, order.id)
-        walletService.bankToCompany(companyFXAccount.id!!, bestRate.bankId, order.fromAmount.negate())
-        walletService.bankToCompany(companyKRWAccount.id!!, bestRate.bankId, rawToAmount)
-
-        if (commissionAmount > BigDecimal.ZERO) {
-            walletService.companyToCompany(companyKRWAccount.id!!, companyCommissionAccount.id!!, commissionAmount)
-        }
-
-        walletService.companyToUser(companyKRWAccount.id!!, order.userId, toCurrency.id, toAmount, order.id)
+        postingService.post(
+            PostingPlan.sell(
+                orderId = order.id!!,
+                userId = order.userId,
+                fromCurrencyId = fromCurrency.id,
+                toCurrencyId = toCurrency.id,
+                fromAmount = order.fromAmount,
+                rawToAmount = rawToAmount,
+                toAmount = toAmount,
+                commissionAmount = commissionAmount
+            )
+        )
 
         recordTransactions(
             userId = order.userId,
@@ -400,6 +345,7 @@ class ExchangeOrderServiceImpl(
 
         order.status = OrderStatus.SETTLED
         order.completedAt = LocalDateTime.now()
+        if (!isArbitrage) saveCompletedEvent(order)
 
         return order.toDto()
     }
@@ -527,18 +473,10 @@ class ExchangeOrderServiceImpl(
             .orElseThrow { IllegalStateException("Currency not found: $currencyId") }
     }
 
-    private fun findCompanyAccount(currencyId: Long): InternalAccount {
-        val meta = CompanyAccount.ofCurrencyId(currencyId)
-        return internalAccountRepository.findByCode(meta)
-            ?.takeIf { it.currencyId == currencyId }
-            ?: error("Company account not found: currencyId=$currencyId")
-    }
-
-    private fun findCommissionAccount(): InternalAccount {
-        val meta = CompanyAccount.COMMISSION_ACCOUNT
-        return internalAccountRepository.findByCode(meta)
-            ?.takeIf { it.currencyId == meta.currencyId }
-            ?: error("Company commission account not found")
+    private fun saveCompletedEvent(order: ExchangeOrder) {
+        outboxEventRepository.save(
+            OutboxEvent(aggregateId = order.id!!, eventType = OutboxEventType.ORDER_COMPLETED)
+        )
     }
 
     private fun recordTransactions(

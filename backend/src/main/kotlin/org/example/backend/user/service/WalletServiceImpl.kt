@@ -1,6 +1,5 @@
 package org.example.backend.user.service
 
-import org.example.backend.enums.TransferReason
 import org.example.backend.enums.WalletTransactionType
 import org.example.backend.enums.CompanyAccount
 import org.example.backend.exception.ErrorCode
@@ -8,9 +7,7 @@ import org.example.backend.exception.UserException
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.finance.repository.InternalAccountRepository
-import org.example.backend.user.dto.BalanceRef
 import org.example.backend.user.dto.DepositWithdrawalCommand
-import org.example.backend.user.dto.MoneyMovementCommand
 import org.example.backend.user.repository.AccountRepository
 import org.example.backend.user.repository.UserRepository
 import org.example.backend.user.repository.WalletRepository
@@ -30,7 +27,6 @@ class WalletServiceImpl(
     private val currencyRepository: CurrencyRepository,
     private val exchangeOrderRepository: ExchangeOrderRepository,
     private val depositWithdrawalService: DepositWithdrawalService,
-    private val moneyMovementService: MoneyMovementService,
     @Value("\${app.bank.simulation-enabled:false}") private val bankSimulationEnabled: Boolean
 ) : WalletService {
 
@@ -189,92 +185,4 @@ class WalletServiceImpl(
             account
         }
 
-    @Transactional
-    override fun companyToCompany(fromAccountId: Long, toAccountId: Long, amount: BigDecimal): BigDecimal {
-        val fromAccount = internalAccountRepository.findById(fromAccountId)
-            .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
-
-        return moneyMovementService.transfer(
-            MoneyMovementCommand(
-                source = BalanceRef.companyAccount(fromAccountId),
-                target = BalanceRef.companyAccount(toAccountId),
-                currencyId = fromAccount.currencyId,
-                amount = amount,
-                orderId = null,
-                reason = TransferReason.FX_SELL_COMMISSION
-            )
-        ) ?: BigDecimal.ZERO
-    }
-
-    @Transactional
-    override fun bankToCompany(accountId: Long, bankId: Long, amount: BigDecimal): BigDecimal {
-        val companyAccount = internalAccountRepository.findById(accountId)
-            .orElseThrow { UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND) }
-
-        val source = if (amount > BigDecimal.ZERO) {
-            BalanceRef.bankExternal()
-        } else {
-            BalanceRef.companyAccount(accountId)
-        }
-        val target = if (amount > BigDecimal.ZERO) {
-            BalanceRef.companyAccount(accountId)
-        } else {
-            BalanceRef.bankExternal()
-        }
-
-        return moneyMovementService.transfer(
-            MoneyMovementCommand(
-                source = source,
-                target = target,
-                currencyId = companyAccount.currencyId,
-                amount = amount.abs(),
-                orderId = null,
-                reason = if (amount > BigDecimal.ZERO) {
-                    TransferReason.FX_BUY_BANK_TO_COMPANY
-                } else {
-                    TransferReason.FX_BUY_COMPANY_TO_BANK
-                }
-            )
-        ) ?: BigDecimal.ZERO
-    }
-
-    @Transactional
-    override fun companyToUser(
-        accountId: Long,
-        userId: Long,
-        currencyId: Long,
-        amount: BigDecimal,
-        orderId: Long?
-    ): BigDecimal {
-        return moneyMovementService.transfer(
-            MoneyMovementCommand(
-                source = BalanceRef.companyAccount(accountId),
-                target = BalanceRef.userWallet(userId),
-                currencyId = currencyId,
-                amount = amount,
-                orderId = orderId,
-                reason = TransferReason.FX_BUY_USER_SETTLEMENT
-            )
-        ) ?: BigDecimal.ZERO
-    }
-
-    @Transactional
-    override fun userToCompany(
-        userId: Long,
-        currencyId: Long,
-        accountId: Long,
-        amount: BigDecimal,
-        orderId: Long?
-    ): BigDecimal {
-        return moneyMovementService.transfer(
-            MoneyMovementCommand(
-                source = BalanceRef.userWallet(userId),
-                target = BalanceRef.companyAccount(accountId),
-                currencyId = currencyId,
-                amount = amount,
-                orderId = orderId,
-                reason = TransferReason.FX_BUY_USER_PAYMENT
-            )
-        ) ?: BigDecimal.ZERO
-    }
 }

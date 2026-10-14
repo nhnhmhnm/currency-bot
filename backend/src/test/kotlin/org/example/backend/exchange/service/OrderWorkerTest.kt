@@ -13,6 +13,7 @@ import org.example.backend.enums.OrderStatus
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.dto.ExchangeOrderResponse
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.springframework.dao.CannotAcquireLockException
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDateTime
@@ -65,6 +66,22 @@ class OrderWorkerTest : FunSpec({
         verifyOrder {
             exchangeOrderService.processQueuedOrder(10L)
             exchangeOrderService.recordProcessingFailure(10L, "lease-1", "temporary", 3)
+            queue.defer(message, due)
+        }
+        verify(exactly = 0) { queue.acknowledge(any()) }
+    }
+
+    test("deadlock schedules a fresh worker settlement attempt") {
+        every { exchangeOrderService.processQueuedOrder(10L) } throws CannotAcquireLockException("deadlock")
+        every { exchangeOrderService.recordProcessingFailure(10L, "lease-1", "deadlock", 3) } returns
+            OrderRetryDecision(false, due)
+        every { queue.defer(message, due) } returns true
+
+        worker.processQueue()
+
+        verifyOrder {
+            exchangeOrderService.processQueuedOrder(10L)
+            exchangeOrderService.recordProcessingFailure(10L, "lease-1", "deadlock", 3)
             queue.defer(message, due)
         }
         verify(exactly = 0) { queue.acknowledge(any()) }

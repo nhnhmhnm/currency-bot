@@ -27,7 +27,6 @@ class WalletServiceImplTest {
             currencyRepository = mockk<CurrencyRepository>(),
             exchangeOrderRepository = mockk<ExchangeOrderRepository>(),
             depositWithdrawalService = mockk<DepositWithdrawalService>(),
-            moneyMovementService = mockk<MoneyMovementService>(),
             bankSimulationEnabled = false
         )
 

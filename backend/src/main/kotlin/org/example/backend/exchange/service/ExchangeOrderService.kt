@@ -29,14 +29,4 @@ interface ExchangeOrderService {
 
     fun recordProcessingFailure(orderId: Long, failureId: String, reason: String, maxAttempts: Int): OrderRetryDecision
 
-    fun buyOrder(userId: Long, currencyCode: String, fromAmount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse
-
-    fun sellOrder(userId: Long, currencyCode: String, fromAmount: BigDecimal, isArbitrage: Boolean): ExchangeOrderResponse
-
-    fun arbitrageOrder(
-        userId: Long,
-        currencyCode: String,
-        fromAmount: BigDecimal,
-        isArbitrage: Boolean
-    ): Pair<ExchangeOrderResponse, ExchangeOrderResponse>
 }

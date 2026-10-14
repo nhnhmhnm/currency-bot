@@ -7,6 +7,7 @@ import org.example.backend.enums.ExchangeType
 import org.example.backend.enums.CompanyAccount
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
+import org.example.backend.enums.OutboxEventType
 import org.example.backend.enums.UserType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
@@ -258,7 +259,31 @@ class ExchangeSettlementRollbackIntegrationTest {
         transactionRepository.count() shouldBe 0L
         exchangeLedgerRepository.count() shouldBe 0L
         walletFxHistoryRepository.count() shouldBe 0L
+        outboxEventRepository.count() shouldBe 0L
         exchangeOrderRepository.findById(order.id!!).orElseThrow().status shouldBe OrderStatus.QUEUED
+    }
+
+    @Test
+    fun `company cash shortage after wallet posting rolls back the whole settlement`() {
+        val cash = internalAccountRepository.findByCode(CompanyAccount.KRW_ACCOUNT)!!
+        cash.balance = BigDecimal.ZERO
+        internalAccountRepository.saveAndFlush(cash)
+        val order = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "short-company-cash")
+
+        assertThrows<UserException> {
+            exchangeOrderService.processQueuedOrder(order.id)
+        }.errorCode shouldBe ErrorCode.COMPANY_LIQUIDITY_INSUFFICIENT.code
+
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
+        walletBalance(USD_ID).compareTo(USER_USD_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(BigDecimal.ZERO) shouldBe 0
+        companyBalance(CompanyAccount.USD_ACCOUNT).compareTo(COMPANY_USD_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(COMMISSION_BALANCE) shouldBe 0
+        walletFxHistoryRepository.count() shouldBe 0L
+        transactionRepository.count() shouldBe 0L
+        exchangeLedgerRepository.count() shouldBe 0L
+        outboxEventRepository.count() shouldBe 1L
+        exchangeOrderRepository.findById(order.id).orElseThrow().status shouldBe OrderStatus.QUEUED
     }
 
     @Test
@@ -286,7 +311,8 @@ class ExchangeSettlementRollbackIntegrationTest {
         walletBalance(KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
         walletBalance(USD_ID).compareTo(BigDecimal("869.20")) shouldBe 0
         exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 10
-        outboxEventRepository.count() shouldBe 10L
+        outboxEventRepository.count() shouldBe 20L
+        outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_COMPLETED } shouldBe 10
         transactionRepository.count() shouldBe 20L
         exchangeLedgerRepository.count() shouldBe 10L
         walletFxHistoryRepository.count() shouldBe 30L
@@ -537,6 +563,62 @@ class ExchangeSettlementRollbackIntegrationTest {
         companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal.ONE) shouldBe 0
         transactionRepository.count() shouldBe 2L
         exchangeLedgerRepository.count() shouldBe 1L
+    }
+
+    @Test
+    fun `opposite direction orders for different users settle with one lock order`() {
+        jdbcTemplate.update(
+            "insert into $quotedUserTable (id, device, password, name, phone, type, is_active, created_at) " +
+                "values (?, ?, ?, ?, ?, ?, ?, current_timestamp)",
+            SECOND_USER_ID, "second-device", "password", "second", "01000000011", "GENERAL", true
+        )
+        jdbcTemplate.update(
+            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
+            SECOND_USER_ID, KRW_ID, BigDecimal.ZERO
+        )
+        jdbcTemplate.update(
+            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
+            SECOND_USER_ID, USD_ID, BigDecimal("100")
+        )
+        val buy = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "opposite-buy")
+        val sell = exchangeOrderService.requestSellOrder(SECOND_USER_ID, "USD", BigDecimal("10"), "opposite-sell")
+
+        val results = runConcurrently(2) { index ->
+            exchangeOrderService.processQueuedOrder(if (index == 0) buy.id else sell.id)
+        }
+
+        results.forEach { it.getOrThrow() }
+        exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 2
+        walletBalance(KRW_ID).compareTo(BigDecimal("900000")) shouldBe 0
+        walletBalance(USD_ID).compareTo(BigDecimal("176.92")) shouldBe 0
+        walletRepository.findByUserIdAndCurrencyId(SECOND_USER_ID, KRW_ID)!!.balance
+            .compareTo(BigDecimal("12999")) shouldBe 0
+        walletRepository.findByUserIdAndCurrencyId(SECOND_USER_ID, USD_ID)!!.balance
+            .compareTo(BigDecimal("90")) shouldBe 0
+        companyBalance(CompanyAccount.KRW_ACCOUNT).compareTo(BigDecimal("999913003")) shouldBe 0
+        companyBalance(CompanyAccount.USD_ACCOUNT).compareTo(BigDecimal("1000066.92")) shouldBe 0
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal("4")) shouldBe 0
+        transactionRepository.count() shouldBe 4L
+        exchangeLedgerRepository.count() shouldBe 2L
+        outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_COMPLETED } shouldBe 2
+    }
+
+    @Test
+    fun `arbitrage reserves only parent and records one completion event`() {
+        val parent = exchangeOrderService.requestArbitrageOrder(USER_ID, "USD", ORDER_AMOUNT, "parent-arbitrage")
+
+        exchangeOrderService.processQueuedOrder(parent.id)
+
+        exchangeOrderRepository.findAll().count { it.status == OrderStatus.SETTLED } shouldBe 3
+        transactionRepository.count() shouldBe 4L
+        exchangeLedgerRepository.count() shouldBe 2L
+        outboxEventRepository.count() shouldBe 2L
+        outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_COMPLETED } shouldBe 1
+        exchangeOrderRepository.sumReservedFromAmount(
+            USER_ID, KRW_ID, ExchangeOrderRepository.RESERVING_STATUSES
+        ).compareTo(BigDecimal.ZERO) shouldBe 0
+        walletBalance(KRW_ID).compareTo(BigDecimal("999996")) shouldBe 0
+        walletBalance(USD_ID).compareTo(USER_USD_BALANCE) shouldBe 0
     }
 
     @Test
@@ -922,6 +1004,7 @@ class ExchangeSettlementRollbackIntegrationTest {
 
         private const val COMPANY_USER_ID = 1L
         private const val USER_ID = 10L
+        private const val SECOND_USER_ID = 11L
         private const val KRW_ID = 1L
         private const val USD_ID = 2L
         private const val USER_ACCOUNT_NUM = "user-krw-account"
