@@ -21,7 +21,8 @@ describe('exchange quote previews', () => {
     const fractional = { ...rates, points: [{ ...rates.points[0], buyRate: 1400.25, baseRate: 1390.75 }] };
     expect(minimumOrderAmount(fractional, 'buy')).toBe('1401');
     expect(minimumOrderAmount(fractional, 'sell')).toBe('1');
-    expect(minimumOrderAmount(fractional, 'arbitrage')).toBe('1391');
+    expect(minimumOrderAmount(fractional, 'arbitrage')).toBe('1000000');
+    expect(minimumOrderAmount(fractional, 'arbitrage', { currency: 'USD', amountKrw: 1000000, buyRate: 1390.75, sellRate: 1390.75, foreignAmount: 719, feeKrw: 30, estimatedReceiveKrw: 999970, estimatedProfitKrw: -30 })).toBe('1000000');
     const jpy = { ...fractional, currency: 'JPY', unit: 100, scale: 0, points: [{ ...fractional.points[0], buyRate: 950.12 }] };
     expect(minimumOrderAmount(jpy, 'buy')).toBe('951');
     expect(minimumOrderAmount(jpy, 'sell')).toBe('100');
@@ -30,9 +31,9 @@ describe('exchange quote previews', () => {
   });
   it('uses base rates for both arbitrage legs without a guaranteed profit', () => {
     const quote = estimate(rates, 'arbitrage', '100000');
-    expect(quote?.fee.toFixed()).toBe('0');
     expect(quote?.bank).toBe('A → B');
-    expect(quote?.receive.toFixed()).toBe('100716');
+    expect(quote?.receive.toFixed()).toBe('100712');
+    expect(quote?.fee.toFixed()).toBe('4');
   });
   it('excludes stale rates and handles empty or invalid values', () => {
     const old = { ...rates.points[0], time: '2026-10-08T09:00:00', buyRate: 100 };
@@ -44,6 +45,8 @@ describe('exchange quote previews', () => {
     expect(orderRequest('buy', 'USD', '100000')).toBe('/exchange/buy?toCurrencyCode=USD&fromAmount=100000');
     expect(orderRequest('sell', 'JPY', '100.00')).toBe('/exchange/sell?fromCurrencyCode=JPY&fromAmount=100');
     expect(orderRequest('arbitrage', 'USD', '100000')).toContain('currencyCode=USD');
+    expect(orderRequest('buy', 'USD', '100000', '1400.00')).toContain('expectedRate=1400');
+    expect(orderRequest('arbitrage', 'USD', '100000', '1390', '1400')).toContain('expectedCounterRate=1400');
     expect(sampleRates('JPY').unit).toBe(100);
   });
 });

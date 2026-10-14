@@ -2,12 +2,13 @@ import { FormEvent, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, BadgeCheck, ChartNoAxesCombined, Check, CircleAlert, Clock3, LoaderCircle, RefreshCw, ShieldCheck, Wallet, X } from 'lucide-react';
 import Decimal from 'decimal.js';
 import { api, ApiError, User } from './api';
-import { banks, best, estimate, format, Metric, minimumOrderAmount, Mode, orderRequest, Rates, sampleRates, seoulDate, Summary } from './exchange';
+import { ArbitrageTerms, banks, best, estimate, format, Metric, minimumOrderAmount, Mode, orderRequest, Rates, sampleRates, seoulDate, Summary } from './exchange';
 
 const RateChart = lazy(() => import('./RateChart'));
 const labels: Record<Mode, string> = { buy: '구매', sell: '판매', arbitrage: '재테크' };
 const metricLabels: Record<Metric, string> = { buyRate: '전신환 매도율', sellRate: '전신환 매입율', baseRate: '매매기준율' };
 type Confirmation = { mode: Mode; amount: string; currency: string; result: NonNullable<ReturnType<typeof estimate>>; key: string; storageKey: string };
+type OrderState = { status: 'ACCEPTED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELED'; cancellationReason: string | null };
 
 export default function Dashboard({ user, currency, onLogin }: { user: User | null; currency: 'USD' | 'JPY'; onLogin: () => void }) {
   const [metrics, setMetrics] = useState<Metric[]>(['buyRate']);
@@ -15,12 +16,15 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
   const [amountOverride, setAmountOverride] = useState<{ currency: string; mode: Mode; value: string } | null>(null);
   const [rates, setRates] = useState<Rates | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [arbitrageTerms, setArbitrageTerms] = useState<ArbitrageTerms | null>(null);
   const [ratesError, setRatesError] = useState('');
   const [summaryError, setSummaryError] = useState('');
   const [loading, setLoading] = useState(true);
   const [demo, setDemo] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [message, setMessage] = useState('');
+  const [messageError, setMessageError] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState<number | null>(null);
   const [formError, setFormError] = useState('');
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +38,16 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
     if (demo) { setRates(sampleRates(currency)); setLoading(false); return; }
     api<Rates>(`/exchange/rates?currency=${currency}`).then(data => { if (active) setRates(data); })
       .catch(e => { if (active) setRatesError(e.message); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [currency, demo, refresh]);
+
+  useEffect(() => {
+    let active = true;
+    setArbitrageTerms(null);
+    if (demo) return;
+    api<ArbitrageTerms>(`/exchange/arbitrage/terms?currency=${currency}`)
+      .then(data => { if (active) setArbitrageTerms(data); })
+      .catch(() => { if (active) setArbitrageTerms(null); });
     return () => { active = false; };
   }, [currency, demo, refresh]);
 
@@ -54,17 +68,38 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
     if (confirmation && dialog.current && !dialog.current.open) dialog.current.showModal();
   }, [confirmation]);
 
+  useEffect(() => {
+    if (!user || pendingOrderId == null) return;
+    let active = true;
+    async function checkOrder() {
+      try {
+        const order = await api<OrderState>(`/exchange/orders/${pendingOrderId}`);
+        if (!active) return;
+        if (order.status === 'COMPLETED') { setMessage(`주문번호 #${pendingOrderId} 환전이 완료되었습니다.`); setMessageError(false); }
+        if (order.status === 'CANCELED') { setMessage(order.cancellationReason === 'RATE_CHANGED' ? `주문번호 #${pendingOrderId} 환율이 변경되어 취소되었습니다. 예약 금액이 해제되었습니다.` : `주문번호 #${pendingOrderId} 주문이 취소되었습니다.`); setMessageError(true); }
+        if (order.status === 'FAILED') { setMessage(`주문번호 #${pendingOrderId} 주문을 처리하지 못했습니다.`); setMessageError(true); }
+        if (['COMPLETED', 'CANCELED', 'FAILED'].includes(order.status)) { setPendingOrderId(null); setRefresh(value => value + 1); }
+      } catch { /* Transient lookup failures are retried while this page is open. */ }
+    }
+    void checkOrder();
+    const timer = window.setInterval(() => { if (!document.hidden) void checkOrder(); }, 2000);
+    return () => { active = false; clearInterval(timer); };
+  }, [pendingOrderId, user]);
+
   useEffect(() => { setAmountOverride(null); setFormError(''); }, [currency]);
 
   const today = seoulDate();
   const currentRates = rates?.currency === currency && rates.date === today;
-  const amount = amountOverride?.currency === currency && amountOverride.mode === mode
+  const amount = mode !== 'arbitrage' && amountOverride?.currency === currency && amountOverride.mode === mode
     ? amountOverride.value
-    : minimumOrderAmount(currentRates && !demo ? rates : null, mode);
+    : minimumOrderAmount(currentRates && !demo ? rates : null, mode, arbitrageTerms);
   const bankRows = banks(rates);
   const buy = best(rates, 'buyRate', 'min');
   const sell = best(rates, 'sellRate', 'max');
-  const result = estimate(rates, mode, amount);
+  const marketEstimate = estimate(rates, mode, amount);
+  const result = mode === 'arbitrage' && arbitrageTerms?.currency === currency && marketEstimate
+    ? { ...marketEstimate, receive: new Decimal(arbitrageTerms.estimatedReceiveKrw), fee: new Decimal(arbitrageTerms.feeKrw), profit: new Decimal(arbitrageTerms.estimatedProfitKrw), rate: arbitrageTerms.buyRate, counterRate: arbitrageTerms.sellRate }
+    : mode === 'arbitrage' ? null : marketEstimate;
   const source = mode === 'sell' ? currency : 'KRW';
   const destination = mode === 'buy' ? currency : 'KRW';
   const available = summary?.wallets.find(wallet => wallet.currency === source)?.available;
@@ -82,18 +117,21 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
     setAmountOverride(null); setFormError('');
   }
   function prepare(event: FormEvent) {
-    event.preventDefault(); setFormError(''); setMessage('');
+    event.preventDefault(); setFormError(''); setMessage(''); setMessageError(false);
     if (!user) { onLogin(); return; }
     if (!result || !currentRates || demo || !summary) return;
     const input = new Decimal(amount);
     const scale = mode === 'sell' ? rates!.scale : 0;
     if (input.decimalPlaces() > scale) { setFormError(`${source} 금액은 소수점 ${scale}자리까지 입력할 수 있습니다.`); return; }
-    const minimum = new Decimal(minimumOrderAmount(rates, mode));
+    if (mode === 'arbitrage' && !arbitrageTerms) { setFormError('현재 차익거래 가능 견적이 없습니다.'); return; }
+    const minimum = new Decimal(minimumOrderAmount(rates, mode, arbitrageTerms));
     if (input.lt(minimum)) { setFormError(`최소 주문 금액은 ${format(minimum, scale)} ${source}입니다.`); return; }
+    if (mode === 'arbitrage' && !input.eq(arbitrageTerms!.amountKrw)) { setFormError('차익거래 주문 금액은 1,000,000원으로 고정됩니다.'); return; }
     const storageKey = `pending-order:${user.id}:${mode}:${currency}:${input.toFixed()}`;
     const previousKey = sessionStorage.getItem(storageKey);
     if (!previousKey && (available == null || input.gt(available))) { setFormError('주문 가능한 잔액이 부족합니다.'); return; }
-    if (!previousKey && new Decimal(summary.remainingUsd).lte(0)) { setFormError('오늘의 환전 한도를 모두 사용했습니다.'); return; }
+    if (mode === 'arbitrage' && !previousKey && summary.arbitrageRemainingCount <= 0) { setFormError('오늘의 차익거래 한도를 모두 사용했습니다.'); return; }
+    if (mode === 'arbitrage' && result.profit?.lt(0)) { setFormError('현재 견적에서는 수수료를 제외한 차익이 발생하지 않습니다.'); return; }
     if (result.receive.lte(0)) { setFormError('환전 후 금액이 0보다 커야 합니다.'); return; }
     setSubmitError('');
     setConfirmation({ mode, currency, amount: input.toFixed(), result, key: previousKey || crypto.randomUUID(), storageKey });
@@ -103,12 +141,14 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
     submittingRef.current = true; setSubmitting(true); setSubmitError('');
     sessionStorage.setItem(confirmation.storageKey, confirmation.key);
     try {
-      const response = await api<string>(orderRequest(confirmation.mode, confirmation.currency, confirmation.amount), {
+      const response = await api<string>(orderRequest(confirmation.mode, confirmation.currency, confirmation.amount, confirmation.result.rate, confirmation.result.counterRate), {
         method: 'POST', headers: { 'Idempotency-Key': confirmation.key },
       });
       const orderId = response.match(/orderId=(\d+)/)?.[1];
       sessionStorage.removeItem(confirmation.storageKey);
-      setMessage(`${labels[confirmation.mode]} 주문이 접수되었습니다.${orderId ? ` 주문번호 #${orderId}` : ''} 접수 금액은 오늘 한도의 예약액에 포함됩니다.`);
+      setMessage(`${labels[confirmation.mode]} 주문이 접수되었습니다.${orderId ? ` 주문번호 #${orderId}` : ''}${confirmation.mode === 'arbitrage' ? ' 접수 금액은 오늘 차익거래 한도에 예약됩니다.' : ''}`);
+      setMessageError(false);
+      if (orderId) setPendingOrderId(Number(orderId));
       setConfirmation(null); setRefresh(value => value + 1);
     } catch (e) {
       const error = e as ApiError;
@@ -136,26 +176,38 @@ export default function Dashboard({ user, currency, onLogin }: { user: User | nu
     </div>
 
     <aside className="trade-column"><div className="trade-tool">
-      <section className="limit-band"><div className="section-heading"><span>오늘의 환전 한도</span><ShieldCheck size={18} /></div><p className="limit-number"><strong>{summary ? format(summary.usedUsd, 2) : '—'}</strong><span>/ {format(summary?.limitUsd || 4000, 0)} USD</span></p><progress aria-label="오늘 사용 및 예약한 환전 한도" max={Number(summary?.limitUsd || 4000)} value={Number(summary?.usedUsd || 0)} /><div className="limit-caption"><span>사용·예약 포함</span><span>{summary ? `${format(summary.remainingUsd)} USD 남음` : summaryError ? '한도 확인 불가' : user ? '한도 조회 중' : '로그인 후 확인'}</span></div></section>
+      <section className="limit-band"><div className="section-heading"><span>오늘의 차익거래 한도</span><ShieldCheck size={18} /></div><p className="limit-number"><strong>{summary?.arbitrageUsedCount ?? '—'}</strong><span>/ {summary?.arbitrageLimitCount ?? 4}회</span></p><progress aria-label="오늘 완료 및 예약한 차익거래 횟수" max={summary?.arbitrageLimitCount ?? 4} value={summary?.arbitrageUsedCount ?? 0} /><div className="limit-caption"><span>회당 1,000,000원 · 접수 중 예약</span><span>{summary ? `${summary.arbitrageRemainingCount}회 남음` : summaryError ? '한도 확인 불가' : user ? '한도 조회 중' : '로그인 후 확인'}</span></div></section>
       <div className="trade-body"><div className="section-heading"><h2>환전하기</h2><ArrowLeftRight size={18} color="#8c859f" /></div>
         <div className="trade-tabs" role="group" aria-label="주문 종류"><button className={`buy ${mode === 'buy' ? 'selected' : ''}`} aria-pressed={mode === 'buy'} onClick={() => changeMode('buy')}><ArrowDownLeft size={17} />구매</button><button className={`sell ${mode === 'sell' ? 'selected' : ''}`} aria-pressed={mode === 'sell'} onClick={() => changeMode('sell')}><ArrowUpRight size={17} />판매</button></div>
         {mode === 'arbitrage' && <div className="strategy-active"><ChartNoAxesCombined size={16} />매매기준율 구매 + 판매</div>}
         <form onSubmit={prepare}>
-          <label className="amount-label" htmlFor="amount">{mode === 'sell' ? '판매할 금액' : '사용할 금액'}</label><div className="amount-input"><input id="amount" aria-label="주문 금액" value={amount} onChange={event => { if (/^\d*\.?\d*$/.test(event.target.value)) { setAmountOverride({ currency, mode, value: event.target.value }); setFormError(''); } }} inputMode="decimal" required maxLength={16} placeholder="0" /><span>{source}</span></div>
+          <label className="amount-label" htmlFor="amount">{mode === 'sell' ? '판매할 금액' : '사용할 금액'}</label><div className="amount-input"><input id="amount" aria-label="주문 금액" value={amount} readOnly={mode === 'arbitrage'} onChange={event => { if (/^\d*\.?\d*$/.test(event.target.value)) { setAmountOverride({ currency, mode, value: event.target.value }); setFormError(''); } }} inputMode="decimal" required maxLength={16} placeholder="0" /><span>{source}</span></div>
           <p className="available"><Wallet size={13} />주문 가능 <strong>{user && summary ? format(available || 0, source === 'KRW' ? 0 : rates?.scale ?? 2) : '—'} {source}</strong></p>
           <div className="conversion-line"><span /><ArrowDownLeft size={17} /><span /></div>
           <div className={`receive-line ${mode}`}><span>예상 {mode === 'arbitrage' ? '최종 수령액' : '수령액'}</span><strong>{format(result?.receive, destination === 'KRW' ? 0 : rates?.scale ?? 2)} <small>{destination}</small></strong></div>
-          <dl className="quote-details"><div><dt>적용 기준</dt><dd>{mode === 'arbitrage' ? '매매기준율' : mode === 'buy' ? '전신환 매도율' : '전신환 매입율'}</dd></div><div><dt>예상 거래 은행</dt><dd>{result?.bank || '—'}</dd></div><div><dt>서비스 수수료</dt><dd>{result ? `${format(result.fee, 0)} KRW` : '—'}</dd></div>{result?.profit != null && <div><dt>예상 차익</dt><dd className={result.profit.gte(0) ? 'positive' : 'negative'}>{format(result.profit, 0)} KRW</dd></div>}</dl>
+          <dl className="quote-details"><div><dt>적용 기준</dt><dd>{mode === 'arbitrage' ? '매매기준율' : mode === 'buy' ? '전신환 매도율' : '전신환 매입율'}</dd></div><div><dt>예상 거래 은행</dt><dd>{result?.bank || '—'}</dd></div><div><dt>서비스 수수료</dt><dd>{result ? `${format(result.fee, 0)} KRW` : '—'}</dd></div>{result?.profit != null && <div><dt>수수료 차감 후 예상 순수익</dt><dd className={result.profit.gte(0) ? 'positive' : 'negative'}>{format(result.profit, 0)} KRW</dd></div>}</dl>
           {summaryError && <p className="message error" role="alert">한도를 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.</p>}
           {formError && <p className="message error" role="alert">{formError}</p>}
-          <button className={`button primary wide order-button ${user ? mode : ''}`} disabled={demo || (Boolean(user) && (!result || !summary || !currentRates || loading))}>{user ? `${labels[mode]} 주문 확인` : '로그인하고 환전하기'}<ArrowRight size={17} /></button>
+          <button className={`button primary wide order-button ${user ? mode : ''}`} disabled={demo || (Boolean(user) && (!result || !summary || !currentRates || loading || (mode === 'arbitrage' && result.profit!.lt(0))))}>{user ? `${labels[mode]} 주문 확인` : '로그인하고 환전하기'}<ArrowRight size={17} /></button>
         </form>
         <p className="order-note">예상 금액이며 실제 체결 금액과 다를 수 있습니다.</p>
       </div>
       <div className="strategy"><span className="strategy-icon"><ChartNoAxesCombined size={20} /></span><div><strong>매매기준율 재테크</strong><p>구매와 판매를 한 번에</p></div><button className="icon-button" title="매매기준율 재테크 주문" aria-label="매매기준율 재테크 주문" onClick={() => changeMode('arbitrage')}><ArrowRight size={20} /></button></div>
-      {mode === 'arbitrage' && <p className="risk-note"><CircleAlert size={14} />환율 변동과 반올림으로 손실이 발생할 수 있습니다.</p>}
+      {mode === 'arbitrage' && <p className="risk-note"><CircleAlert size={14} />예상 순수익은 고시 환율과 수수료 기준입니다. 환율이 바뀌면 정산하지 않고 취소합니다.</p>}
     </div><div className="security-note"><BadgeCheck size={17} /><span>일일 한도는 서버 기준으로 확인합니다.</span></div></aside></div>
-    {message && <div className="order-feedback message success" role="status"><Check size={18} /><span>{message}</span><button className="icon-button" aria-label="주문 접수 알림 닫기" onClick={() => setMessage('')}><X size={17} /></button></div>}
-    {confirmation && <dialog ref={dialog} className="confirmation" onCancel={event => { event.preventDefault(); if (!submitting) setConfirmation(null); }}><div className="section-heading"><h2>{labels[confirmation.mode]} 주문 확인</h2><button className="icon-button" aria-label="주문 확인 닫기" disabled={submitting} onClick={() => setConfirmation(null)}><X size={20} /></button></div><p className="muted confirmation-subtitle">{confirmation.currency} · {confirmation.mode === 'arbitrage' ? '매매기준율 구매 + 판매' : confirmation.mode === 'buy' ? '전신환 매도율' : '전신환 매입율'}</p><dl className="quote-details"><div><dt>주문 금액</dt><dd>{format(confirmation.amount, confirmation.mode === 'sell' ? 2 : 0)} {confirmation.mode === 'sell' ? confirmation.currency : 'KRW'}</dd></div><div><dt>예상 수령액</dt><dd>{format(confirmation.result.receive, confirmation.mode === 'buy' ? rates?.scale ?? 2 : 0)} {confirmation.mode === 'buy' ? confirmation.currency : 'KRW'}</dd></div><div><dt>예상 수수료</dt><dd>{format(confirmation.result.fee, 0)} KRW</dd></div></dl><p className="confirmation-warning">접수 후 서버에서 정산합니다. 적용 환율과 최종 수령액은 달라질 수 있습니다.{confirmation.mode === 'arbitrage' ? ' 재테크 주문은 수익을 보장하지 않습니다.' : ''}</p>{submitError && <p className="message error" role="alert">{submitError}</p>}<button className="button primary wide" disabled={submitting} onClick={submit}>{submitting ? <LoaderCircle className="spin" size={18} /> : <Check size={18} />}{submitting ? '접수 중' : submitError ? '같은 요청으로 다시 확인' : '주문 접수'}</button></dialog>}
+    {message && <div className={`order-feedback message ${messageError ? 'error' : 'success'}`} role="status">{messageError ? <CircleAlert size={18} /> : <Check size={18} />}<span>{message}</span><button className="icon-button" aria-label="주문 알림 닫기" onClick={() => setMessage('')}><X size={17} /></button></div>}
+    {confirmation && <dialog ref={dialog} className="confirmation" onCancel={event => { event.preventDefault(); if (!submitting) setConfirmation(null); }}>
+      <div className="section-heading"><h2>{labels[confirmation.mode]} 주문 확인</h2><button className="icon-button" aria-label="주문 확인 닫기" disabled={submitting} onClick={() => setConfirmation(null)}><X size={20} /></button></div>
+      <p className="muted confirmation-subtitle">{confirmation.currency} · {confirmation.mode === 'arbitrage' ? '매매기준율 구매 + 판매' : confirmation.mode === 'buy' ? '전신환 매도율' : '전신환 매입율'}</p>
+      <dl className="quote-details">
+        <div><dt>주문 금액</dt><dd>{format(confirmation.amount, confirmation.mode === 'sell' ? 2 : 0)} {confirmation.mode === 'sell' ? confirmation.currency : 'KRW'}</dd></div>
+        <div><dt>예상 수령액</dt><dd>{format(confirmation.result.receive, confirmation.mode === 'buy' ? rates?.scale ?? 2 : 0)} {confirmation.mode === 'buy' ? confirmation.currency : 'KRW'}</dd></div>
+        <div><dt>예상 수수료</dt><dd>{format(confirmation.result.fee, 0)} KRW</dd></div>
+        {confirmation.result.profit != null && <div><dt>수수료 차감 후 예상 순수익</dt><dd className={confirmation.result.profit.gte(0) ? 'positive' : 'negative'}>{format(confirmation.result.profit, 0)} KRW</dd></div>}
+      </dl>
+      <p className="confirmation-warning">확인한 환율이 접수 전에 바뀌면 주문은 거절됩니다. 접수 후 정산 전에 바뀌면 주문을 취소하고 예약을 해제합니다.{confirmation.mode === 'arbitrage' ? ' 재테크 주문은 수익을 보장하지 않습니다.' : ''}</p>
+      {submitError && <p className="message error" role="alert">{submitError}</p>}
+      <button className="button primary wide" disabled={submitting} onClick={submit}>{submitting ? <LoaderCircle className="spin" size={18} /> : <Check size={18} />}{submitting ? '접수 중' : submitError ? '같은 요청으로 다시 확인' : '주문 접수'}</button>
+    </dialog>}
   </main>;
 }

@@ -35,7 +35,9 @@ fun ExchangeOrder.toDto() = ExchangeOrderResponse(
     toAmount = this.toAmount,
     exchangeRate = this.exchangeRate,
     status = this.status.toPublicStatus(),
-    requestedAt = this.requestedAt!!
+    requestedAt = this.requestedAt!!,
+    quotedRate = this.quotedRate,
+    cancellationReason = this.failureReason.takeIf { this.status == OrderStatus.CANCELED && it == "RATE_CHANGED" }
 )
 
 private fun OrderStatus.toPublicStatus(): PublicOrderStatus = when (this) {

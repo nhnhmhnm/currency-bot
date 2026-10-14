@@ -6,16 +6,15 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.example.backend.enums.ExchangeType
-import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
 import org.example.backend.enums.UserType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.exchange.dto.BestExchangeRateDto
-import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.finance.domain.Currency
-import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.user.domain.User
 import org.example.backend.user.domain.Wallet
 import org.example.backend.user.repository.UserRepository
@@ -26,15 +25,13 @@ import java.time.LocalDateTime
 class ExchangeOrderRequestValidatorTest : FunSpec({
     val userRepository = mockk<UserRepository>()
     val walletRepository = mockk<WalletRepository>()
-    val exchangeOrderRepository = mockk<ExchangeOrderRepository>()
-    val currencyRepository = mockk<CurrencyRepository>()
+    val reservationRepository = mockk<ExchangeReservationRepository>()
     val exchangeService = mockk<ExchangeService>()
 
     val validator = ExchangeOrderRequestValidator(
         userRepository = userRepository,
         walletRepository = walletRepository,
-        exchangeOrderRepository = exchangeOrderRepository,
-        currencyRepository = currencyRepository,
+        reservationRepository = reservationRepository,
         exchangeService = exchangeService
     )
 
@@ -55,7 +52,6 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
     beforeTest {
         clearAllMocks()
         every { userRepository.findByIdForUpdate(userId) } returns user
-        every { currencyRepository.findByCode("USD") } returns usd
         every { exchangeService.getBestBuyBaseRate("USD") } returns BestExchangeRateDto(
             bankId = 1L,
             currencyId = usd.id,
@@ -78,7 +74,7 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
             balance = BigDecimal("100000")
         )
         every {
-            exchangeOrderRepository.sumReservedFromAmount(userId, krw.id, any<Collection<OrderStatus>>())
+            reservationRepository.sumActiveFunds(userId, krw.id, any())
         } returns BigDecimal("80000")
 
         val exception = shouldThrow<UserException> {
@@ -94,7 +90,7 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
         exception.errorCode shouldBe ErrorCode.INSUFFICIENT_WALLET_BALANCE.code
     }
 
-    test("rejects an order that would exceed the daily 4000 USD limit") {
+    test("normal buy has no product daily USD quota") {
         every { walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, krw.id) } returns Wallet(
             id = 1L,
             userId = userId,
@@ -102,31 +98,12 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
             balance = BigDecimal("10000000")
         )
         every {
-            exchangeOrderRepository.sumReservedFromAmount(userId, krw.id, any<Collection<OrderStatus>>())
+            reservationRepository.sumActiveFunds(userId, krw.id, any())
         } returns BigDecimal.ZERO
-        every {
-            exchangeOrderRepository.sumDailyUsdEquivalentAmount(
-                userId,
-                any(),
-                any(),
-                any<Collection<OrderStatus>>()
-            )
-        } returns BigDecimal("3999.000000")
-
-        val exception = shouldThrow<UserException> {
-            validator.validate(
-                userId = userId,
-                orderType = OrderType.BUY,
-                fromCurrency = krw,
-                toCurrency = usd,
-                fromAmount = BigDecimal("2600")
-            )
-        }
-
-        exception.errorCode shouldBe ErrorCode.DAILY_EXCHANGE_LIMIT_EXCEEDED.code
+        validator.validate(userId, OrderType.BUY, krw, usd, BigDecimal("5200000"))
     }
 
-    test("accepts an order when the daily total is exactly 4000 USD") {
+    test("arbitrage accepts only the fixed one million KRW amount") {
         every { walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, krw.id) } returns Wallet(
             id = 1L,
             userId = userId,
@@ -134,33 +111,35 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
             balance = BigDecimal("10000000")
         )
         every {
-            exchangeOrderRepository.sumReservedFromAmount(userId, krw.id, any<Collection<OrderStatus>>())
+            reservationRepository.sumActiveFunds(userId, krw.id, any())
         } returns BigDecimal.ZERO
-        every {
-            exchangeOrderRepository.sumDailyUsdEquivalentAmount(
-                userId,
-                any(),
-                any(),
-                any<Collection<OrderStatus>>()
-            )
-        } returns BigDecimal("3999.000000")
+        validator.validate(userId, OrderType.ARBITRAGE, krw, usd, BigDecimal("1000000"))
+        shouldThrow<UserException> {
+            validator.validate(userId, OrderType.ARBITRAGE, krw, usd, BigDecimal("1000001"))
+        }.errorCode shouldBe ErrorCode.ARBITRAGE_AMOUNT_EXCEEDED.code
+        shouldThrow<UserException> {
+            validator.validate(userId, OrderType.ARBITRAGE, krw, usd, BigDecimal("999999"))
+        }.errorCode shouldBe ErrorCode.ARBITRAGE_AMOUNT_EXCEEDED.code
+    }
 
-        val usdEquivalentAmount = validator.validate(
-            userId = userId,
-            orderType = OrderType.BUY,
-            fromCurrency = krw,
-            toCurrency = usd,
-            fromAmount = BigDecimal("1300")
+    test("JPY arbitrage validation does not require a USD quote") {
+        every { walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, krw.id) } returns Wallet(
+            id = 1L, userId = userId, currencyId = krw.id, balance = BigDecimal("1000000")
+        )
+        every { reservationRepository.sumActiveFunds(userId, krw.id, any()) } returns BigDecimal.ZERO
+        every { exchangeService.getBestBuyBaseRate("JPY") } returns BestExchangeRateDto(
+            bankId = 1L, currencyId = jpy.id, bestRate = BigDecimal("900"), type = ExchangeType.BUY
         )
 
-        usdEquivalentAmount shouldBe BigDecimal("1.000000")
+        validator.validate(userId, OrderType.ARBITRAGE, krw, jpy, BigDecimal("1000000"))
+        verify(exactly = 0) { exchangeService.getBestBuyBaseRate("USD") }
     }
 
     test("rejects a buy below the quoted unit price before accepting the order") {
         every { walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, krw.id) } returns Wallet(
             id = 1L, userId = userId, currencyId = krw.id, balance = BigDecimal("10000")
         )
-        every { exchangeOrderRepository.sumReservedFromAmount(userId, krw.id, any<Collection<OrderStatus>>()) } returns BigDecimal.ZERO
+        every { reservationRepository.sumActiveFunds(userId, krw.id, any()) } returns BigDecimal.ZERO
 
         val exception = shouldThrow<UserException> {
             validator.validate(userId, OrderType.BUY, krw, usd, BigDecimal("1299"))
@@ -173,7 +152,7 @@ class ExchangeOrderRequestValidatorTest : FunSpec({
         every { walletRepository.findByUserIdAndCurrencyIdForUpdate(userId, jpy.id) } returns Wallet(
             id = 2L, userId = userId, currencyId = jpy.id, balance = BigDecimal("1000")
         )
-        every { exchangeOrderRepository.sumReservedFromAmount(userId, jpy.id, any<Collection<OrderStatus>>()) } returns BigDecimal.ZERO
+        every { reservationRepository.sumActiveFunds(userId, jpy.id, any()) } returns BigDecimal.ZERO
 
         val exception = shouldThrow<UserException> {
             validator.validate(userId, OrderType.SELL, jpy, krw, BigDecimal("99"))

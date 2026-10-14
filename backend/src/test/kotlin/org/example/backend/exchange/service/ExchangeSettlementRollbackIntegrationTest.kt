@@ -12,11 +12,13 @@ import org.example.backend.enums.UserType
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.exchange.domain.ExchangeOrder
+import org.example.backend.exchange.domain.ReservationStatus
 import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.exchange.dto.ExchangeLedgerCommand
 import org.example.backend.exchange.dto.ExchangeLedgerResponse
 import org.example.backend.exchange.repository.ExchangeLedgerRepository
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exchange.repository.TransactionRepository
 import org.example.backend.finance.domain.Currency
@@ -50,7 +52,9 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
@@ -61,6 +65,8 @@ import java.sql.SQLException
 import java.sql.Types
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -89,6 +95,9 @@ class ExchangeSettlementRollbackIntegrationTest {
     private lateinit var exchangeOrderRepository: ExchangeOrderRepository
 
     @Autowired
+    private lateinit var reservationRepository: ExchangeReservationRepository
+
+    @Autowired
     private lateinit var outboxEventRepository: OutboxEventRepository
 
     @Autowired
@@ -114,6 +123,9 @@ class ExchangeSettlementRollbackIntegrationTest {
 
     @Autowired
     private lateinit var ledgerService: ControllableLedgerService
+
+    @Autowired
+    private lateinit var fixedExchangeService: FixedExchangeService
 
     @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -145,11 +157,16 @@ class ExchangeSettlementRollbackIntegrationTest {
     @BeforeEach
     fun setUp() {
         ledgerService.failOnRecord = false
+        fixedExchangeService.buyRate = RATE
+        fixedExchangeService.sellRate = RATE
+        fixedExchangeService.buyBaseRate = RATE
+        fixedExchangeService.sellBaseRate = RATE
         walletFxHistoryRepository.deleteAll()
         jdbcTemplate.update("delete from deposit_withdrawal")
         exchangeLedgerRepository.deleteAll()
         transactionRepository.deleteAll()
         outboxEventRepository.deleteAll()
+        reservationRepository.deleteAll()
         exchangeOrderRepository.deleteAll()
         walletRepository.deleteAll()
         simulatedBankBalanceRepository.deleteAll()
@@ -239,6 +256,71 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `accepted order reserves funds and quota then consumes reservation exactly once`() {
+        val accepted = exchangeOrderService.requestBuyOrder(
+            USER_ID, "USD", ORDER_AMOUNT, "reservation-once", expectedRate = RATE
+        )
+        val reservation = reservationRepository.findById(accepted.id).orElseThrow()
+        reservation.status shouldBe ReservationStatus.ACTIVE
+        reservation.fromAmount.compareTo(ORDER_AMOUNT) shouldBe 0
+        reservation.businessDate shouldBe LocalDate.now(ZoneId.of("Asia/Seoul"))
+        reservationRepository.sumActiveFunds(USER_ID, KRW_ID).compareTo(ORDER_AMOUNT) shouldBe 0
+        exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "reservation-once", expectedRate = RATE).id shouldBe accepted.id
+        reservationRepository.count() shouldBe 1L
+
+        exchangeOrderService.processQueuedOrder(accepted.id)
+        exchangeOrderService.processQueuedOrder(accepted.id)
+
+        reservationRepository.findById(accepted.id).orElseThrow().status shouldBe ReservationStatus.CONSUMED
+        reservationRepository.sumActiveFunds(USER_ID, KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
+        transactionRepository.count() shouldBe 2L
+        exchangeLedgerRepository.count() shouldBe 1L
+    }
+
+    @Test
+    fun `rate change cancels an accepted order and releases both reservations`() {
+        val accepted = exchangeOrderService.requestBuyOrder(
+            USER_ID, "USD", ORDER_AMOUNT, "rate-change", expectedRate = RATE
+        )
+        fixedExchangeService.buyRate = RATE.add(BigDecimal.ONE)
+
+        val canceled = exchangeOrderService.processQueuedOrder(accepted.id)
+
+        canceled.status shouldBe org.example.backend.enums.PublicOrderStatus.CANCELED
+        canceled.cancellationReason shouldBe "RATE_CHANGED"
+        exchangeOrderRepository.findById(accepted.id).orElseThrow().status shouldBe OrderStatus.CANCELED
+        reservationRepository.findById(accepted.id).orElseThrow().status shouldBe ReservationStatus.RELEASED
+        reservationRepository.sumActiveFunds(USER_ID, KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
+        transactionRepository.count() shouldBe 0L
+        exchangeLedgerRepository.count() shouldBe 0L
+        exchangeOrderService.processQueuedOrder(accepted.id).cancellationReason shouldBe "RATE_CHANGED"
+    }
+
+    @Test
+    fun `stale client quote is rejected without creating order reservation or outbox`() {
+        assertThrows<UserException> {
+            exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "stale-quote", expectedRate = RATE.subtract(BigDecimal.ONE))
+        }.errorCode shouldBe ErrorCode.RATE_CHANGED.code
+        exchangeOrderRepository.count() shouldBe 0L
+        reservationRepository.count() shouldBe 0L
+        outboxEventRepository.count() shouldBe 0L
+    }
+
+    @Test
+    fun `final failure releases reservation without changing the wallet`() {
+        val accepted = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "final-failure")
+        exchangeOrderService.recordProcessingFailure(accepted.id, "failure-1", "internal details", 1).terminal shouldBe true
+        exchangeOrderService.recordProcessingFailure(accepted.id, "failure-1", "internal details", 1).terminal shouldBe true
+
+        reservationRepository.findById(accepted.id).orElseThrow().status shouldBe ReservationStatus.RELEASED
+        reservationRepository.sumActiveFunds(USER_ID, KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
+        exchangeOrderRepository.findById(accepted.id).orElseThrow().status shouldBe OrderStatus.FAILED
+        walletBalance(KRW_ID).compareTo(USER_KRW_BALANCE) shouldBe 0
+        transactionRepository.count() shouldBe 0L
+    }
+
+    @Test
     fun `ledger failure rolls back balances transactions ledger and wallet history`() {
         val order = exchangeOrderRepository.save(
             ExchangeOrder(
@@ -249,7 +331,6 @@ class ExchangeSettlementRollbackIntegrationTest {
                 fromAmount = ORDER_AMOUNT,
                 toAmount = BigDecimal.ZERO,
                 exchangeRate = BigDecimal.ZERO,
-                usdEquivalentAmount = BigDecimal("76.923077"),
                 orderType = OrderType.BUY,
                 status = OrderStatus.QUEUED
             )
@@ -331,7 +412,7 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
-    fun `concurrent requests cannot bypass the daily 4000 USD limit`() {
+    fun `ordinary exchange orders have no product daily USD quota`() {
         jdbcTemplate.update(
             "update wallet set balance = ? where user_id = ? and currency_id = ?",
             BigDecimal("10000000.00"),
@@ -349,11 +430,10 @@ class ExchangeSettlementRollbackIntegrationTest {
             )
         }
 
-        requests.count { it.isSuccess } shouldBe 5
-        val failure = requests.single { it.isFailure }.exceptionOrNull() as UserException
-        failure.errorCode shouldBe ErrorCode.DAILY_EXCHANGE_LIMIT_EXCEEDED.code
-        exchangeOrderRepository.count() shouldBe 5L
-        outboxEventRepository.count() shouldBe 5L
+        requests.count { it.isSuccess } shouldBe 6
+        exchangeOrderRepository.count() shouldBe 6L
+        reservationRepository.count() shouldBe 6L
+        outboxEventRepository.count() shouldBe 6L
     }
 
     @Test
@@ -727,7 +807,8 @@ class ExchangeSettlementRollbackIntegrationTest {
 
     @Test
     fun `arbitrage reserves only parent and records one completion event`() {
-        val parent = exchangeOrderService.requestArbitrageOrder(USER_ID, "USD", ORDER_AMOUNT, "parent-arbitrage")
+        fixedExchangeService.sellBaseRate = BigDecimal("1310")
+        val parent = exchangeOrderService.requestArbitrageOrder(USER_ID, "USD", BigDecimal("1000000"), "parent-arbitrage")
 
         exchangeOrderService.processQueuedOrder(parent.id)
 
@@ -736,11 +817,62 @@ class ExchangeSettlementRollbackIntegrationTest {
         exchangeLedgerRepository.count() shouldBe 2L
         outboxEventRepository.count() shouldBe 2L
         outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_COMPLETED } shouldBe 1
-        exchangeOrderRepository.sumReservedFromAmount(
-            USER_ID, KRW_ID, ExchangeOrderRepository.RESERVING_STATUSES
-        ).compareTo(BigDecimal.ZERO) shouldBe 0
-        walletBalance(KRW_ID).compareTo(BigDecimal("999996")) shouldBe 0
+        reservationRepository.findById(parent.id).orElseThrow().status shouldBe ReservationStatus.CONSUMED
+        reservationRepository.sumActiveFunds(USER_ID, KRW_ID).compareTo(BigDecimal.ZERO) shouldBe 0
+        walletBalance(KRW_ID).compareTo(BigDecimal("1007660")) shouldBe 0
         walletBalance(USD_ID).compareTo(USER_USD_BALANCE) shouldBe 0
+        companyBalance(CompanyAccount.COMMISSION_ACCOUNT).compareTo(BigDecimal("31")) shouldBe 0
+    }
+
+    @Test
+    fun `arbitrage shares four daily slots across currencies and releases canceled slots`() {
+        jdbcTemplate.update(
+            "insert into currency (id, code, name, scale, unit) values (?, ?, ?, ?, ?)",
+            JPY_ID, "JPY", "Japanese Yen", 0, BigDecimal("100")
+        )
+        jdbcTemplate.update(
+            "insert into wallet (user_id, currency_id, balance) values (?, ?, ?)",
+            USER_ID, JPY_ID, BigDecimal.ZERO
+        )
+        insertCompanyAccount(CompanyAccount.JPY_ACCOUNT, COMPANY_USD_BALANCE)
+        fixedExchangeService.sellBaseRate = BigDecimal("1310")
+        val amount = BigDecimal("1000000")
+        val first = exchangeOrderService.requestArbitrageOrder(USER_ID, "USD", amount, "arb-first")
+        exchangeOrderRepository.findById(first.id).orElseThrow().arbitrageSlotNumber shouldBe 1
+
+        fixedExchangeService.sellBaseRate = BigDecimal("1320")
+        exchangeOrderService.processQueuedOrder(first.id).cancellationReason shouldBe "RATE_CHANGED"
+        reservationRepository.findById(first.id).orElseThrow().status shouldBe ReservationStatus.RELEASED
+        fixedExchangeService.sellBaseRate = BigDecimal("1310")
+        val second = exchangeOrderService.requestArbitrageOrder(USER_ID, "JPY", amount, "arb-second")
+        exchangeOrderRepository.findById(second.id).orElseThrow().arbitrageSlotNumber shouldBe 1
+        exchangeOrderService.processQueuedOrder(second.id)
+        for (slot in 2..4) {
+            val order = exchangeOrderService.requestArbitrageOrder(USER_ID, "USD", amount, "arb-$slot")
+            exchangeOrderRepository.findById(order.id).orElseThrow().arbitrageSlotNumber shouldBe slot
+            exchangeOrderService.processQueuedOrder(order.id)
+        }
+        assertThrows<UserException> {
+            exchangeOrderService.requestArbitrageOrder(USER_ID, "USD", amount, "arb-fifth")
+        }.errorCode shouldBe ErrorCode.ARBITRAGE_DAILY_LIMIT_EXCEEDED.code
+    }
+
+    @Test
+    fun `only the order owner sees a public cancellation reason`() {
+        fixedExchangeService.sellBaseRate = BigDecimal("1310")
+        val order = exchangeOrderService.requestArbitrageOrder(USER_ID, "USD", BigDecimal("1000000"), "visible-cancel")
+        fixedExchangeService.sellBaseRate = BigDecimal("1320")
+        exchangeOrderService.processQueuedOrder(order.id)
+
+        fun auth(userId: Long) = authentication(UsernamePasswordAuthenticationToken(
+            UserPrincipal(userId, "user", UserType.GENERAL), null, listOf(SimpleGrantedAuthority("ROLE_GENERAL"))
+        ))
+        mockMvc.perform(get("/api/exchange/orders/${order.id}").with(auth(USER_ID)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("CANCELED"))
+            .andExpect(jsonPath("$.cancellationReason").value("RATE_CHANGED"))
+        mockMvc.perform(get("/api/exchange/orders/${order.id}").with(auth(SECOND_USER_ID)))
+            .andExpect(status().isNotFound)
     }
 
     @Test
@@ -1071,7 +1203,7 @@ class ExchangeSettlementRollbackIntegrationTest {
     class TestConfig {
         @Bean
         @Primary
-        fun fixedExchangeService(): ExchangeService = FixedExchangeService()
+        fun fixedExchangeService(): FixedExchangeService = FixedExchangeService()
 
         @Bean
         @Primary
@@ -1081,10 +1213,15 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     class FixedExchangeService : ExchangeService {
-        override fun getBestBuyRate(currencyCode: String) = bestRate(ExchangeType.BUY)
-        override fun getBestSellRate(currencyCode: String) = bestRate(ExchangeType.SELL)
-        override fun getBestBuyBaseRate(currencyCode: String) = bestRate(ExchangeType.BUY)
-        override fun getBestSellBaseRate(currencyCode: String) = bestRate(ExchangeType.SELL)
+        @Volatile var buyRate: BigDecimal = RATE
+        @Volatile var sellRate: BigDecimal = RATE
+        @Volatile var buyBaseRate: BigDecimal = RATE
+        @Volatile var sellBaseRate: BigDecimal = RATE
+
+        override fun getBestBuyRate(currencyCode: String) = bestRate(currencyCode, ExchangeType.BUY, buyRate)
+        override fun getBestSellRate(currencyCode: String) = bestRate(currencyCode, ExchangeType.SELL, sellRate)
+        override fun getBestBuyBaseRate(currencyCode: String) = bestRate(currencyCode, ExchangeType.BUY, buyBaseRate)
+        override fun getBestSellBaseRate(currencyCode: String) = bestRate(currencyCode, ExchangeType.SELL, sellBaseRate)
 
         override fun calculateExchange(
             fromCurrency: Currency,
@@ -1101,10 +1238,10 @@ class ExchangeSettlementRollbackIntegrationTest {
             return amount to rawAmount.subtract(amount)
         }
 
-        private fun bestRate(type: ExchangeType) = BestExchangeRateDto(
+        private fun bestRate(currencyCode: String, type: ExchangeType, rate: BigDecimal) = BestExchangeRateDto(
             bankId = 1L,
-            currencyId = USD_ID,
-            bestRate = RATE,
+            currencyId = if (currencyCode == "JPY") JPY_ID else USD_ID,
+            bestRate = rate,
             type = type
         )
     }
@@ -1151,6 +1288,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         private const val SECOND_USER_ID = 11L
         private const val KRW_ID = 1L
         private const val USD_ID = 2L
+        private const val JPY_ID = 3L
         private const val USER_ACCOUNT_NUM = "user-krw-account"
         private val RATE = BigDecimal("1300")
         private val ORDER_AMOUNT = BigDecimal("100000")

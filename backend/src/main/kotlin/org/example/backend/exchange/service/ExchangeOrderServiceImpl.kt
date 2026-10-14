@@ -5,23 +5,32 @@ import org.example.backend.enums.ExchangeLedgerType
 import org.example.backend.enums.OrderStatus
 import org.example.backend.enums.OrderType
 import org.example.backend.exchange.domain.ExchangeOrder
+import org.example.backend.exchange.domain.ExchangeReservation
+import org.example.backend.exchange.domain.ReservationStatus
 import org.example.backend.exchange.dto.ExchangeLedgerCommand
 import org.example.backend.exchange.dto.ExchangeOrderResponse
 import org.example.backend.exchange.dto.TransactionCommand
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.exchange.domain.OutboxEvent
 import org.example.backend.enums.OutboxEventType
 import org.example.backend.finance.domain.Currency
+import org.example.backend.exchange.dto.BestExchangeRateDto
 import org.example.backend.finance.repository.CurrencyRepository
+import org.example.backend.exception.ErrorCode
+import org.example.backend.exception.UserException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
 @Service
@@ -33,7 +42,8 @@ class ExchangeOrderServiceImpl(
     private val currencyRepository: CurrencyRepository,
     private val postingService: PostingService,
     private val requestValidator: ExchangeOrderRequestValidator,
-    private val outboxEventRepository: OutboxEventRepository
+    private val outboxEventRepository: OutboxEventRepository,
+    private val reservationRepository: ExchangeReservationRepository
 ) : ExchangeOrderService {
     private val log = LoggerFactory.getLogger(ExchangeOrderServiceImpl::class.java)
 
@@ -45,12 +55,20 @@ class ExchangeOrderServiceImpl(
         OrderStatus.COMPENSATED
     )
 
+    @Transactional(readOnly = true)
+    override fun getOrder(userId: Long, orderId: Long): ExchangeOrderResponse {
+        val order = exchangeOrderRepository.findById(orderId).orElse(null)
+        if (order == null || order.userId != userId) throw ResponseStatusException(HttpStatus.NOT_FOUND)
+        return order.toDto()
+    }
+
     @Transactional
     override fun requestBuyOrder(
         userId: Long,
         currencyCode: String,
         fromAmount: BigDecimal,
-        idempotencyKey: String?
+        idempotencyKey: String?,
+        expectedRate: BigDecimal?
     ): ExchangeOrderResponse {
         return createQueuedOrder(
             userId = userId,
@@ -58,7 +76,8 @@ class ExchangeOrderServiceImpl(
             fromCurrencyCode = "KRW",
             toCurrencyCode = currencyCode,
             fromAmount = fromAmount,
-            idempotencyKey = idempotencyKey
+            idempotencyKey = idempotencyKey,
+            expectedRate = expectedRate
         ).toDto()
     }
 
@@ -67,7 +86,8 @@ class ExchangeOrderServiceImpl(
         userId: Long,
         currencyCode: String,
         fromAmount: BigDecimal,
-        idempotencyKey: String?
+        idempotencyKey: String?,
+        expectedRate: BigDecimal?
     ): ExchangeOrderResponse {
         return createQueuedOrder(
             userId = userId,
@@ -75,7 +95,8 @@ class ExchangeOrderServiceImpl(
             fromCurrencyCode = currencyCode,
             toCurrencyCode = "KRW",
             fromAmount = fromAmount,
-            idempotencyKey = idempotencyKey
+            idempotencyKey = idempotencyKey,
+            expectedRate = expectedRate
         ).toDto()
     }
 
@@ -84,7 +105,9 @@ class ExchangeOrderServiceImpl(
         userId: Long,
         currencyCode: String,
         fromAmount: BigDecimal,
-        idempotencyKey: String?
+        idempotencyKey: String?,
+        expectedRate: BigDecimal?,
+        expectedCounterRate: BigDecimal?
     ): ExchangeOrderResponse {
         return createQueuedOrder(
             userId = userId,
@@ -92,7 +115,9 @@ class ExchangeOrderServiceImpl(
             fromCurrencyCode = "KRW",
             toCurrencyCode = currencyCode,
             fromAmount = fromAmount,
-            idempotencyKey = idempotencyKey
+            idempotencyKey = idempotencyKey,
+            expectedRate = expectedRate,
+            expectedCounterRate = expectedCounterRate
         ).toDto()
     }
 
@@ -109,15 +134,35 @@ class ExchangeOrderServiceImpl(
             if (due.isAfter(Instant.now())) throw OrderRetryNotDueException(due)
         }
 
+        requestValidator.lockUserForProcessing(order.userId)
+
+        val currency = getCurrency(if (order.orderType == OrderType.SELL) order.fromCurrencyId else order.toCurrencyId)
+        val rate = when (order.orderType) {
+            OrderType.BUY -> exchangeService.getBestBuyRate(currency.code)
+            OrderType.SELL -> exchangeService.getBestSellRate(currency.code)
+            OrderType.ARBITRAGE -> exchangeService.getBestBuyBaseRate(currency.code)
+        }
+        val counterRate = if (order.orderType == OrderType.ARBITRAGE) {
+            exchangeService.getBestSellBaseRate(currency.code)
+        } else null
+        val quotedRate = order.quotedRate
+        if (quotedRate != null && (quotedRate.compareTo(rate.bestRate) != 0 ||
+                (counterRate != null && order.quotedCounterRate?.compareTo(counterRate.bestRate) != 0))) {
+            order.status = OrderStatus.CANCELED
+            order.failureReason = "RATE_CHANGED"
+            order.completedAt = LocalDateTime.now()
+            transitionReservation(order, ReservationStatus.RELEASED)
+            return order.toDto()
+        }
+
         order.status = OrderStatus.PROCESSING
         order.processedAt = LocalDateTime.now()
         order.nextAttemptAt = null
-        requestValidator.validateForProcessing(order)
 
         return when (order.orderType) {
-            OrderType.BUY -> executeBuyOrder(order, isArbitrage = false)
-            OrderType.SELL -> executeSellOrder(order, isArbitrage = false)
-            OrderType.ARBITRAGE -> executeArbitrageParentOrder(order)
+            OrderType.BUY -> executeBuyOrder(order, isArbitrage = false, bestRate = rate)
+            OrderType.SELL -> executeSellOrder(order, isArbitrage = false, bestRate = rate)
+            OrderType.ARBITRAGE -> executeArbitrageParentOrder(order, rate, requireNotNull(counterRate))
         }
     }
 
@@ -145,6 +190,7 @@ class ExchangeOrderServiceImpl(
             order.status = OrderStatus.FAILED
             order.completedAt = LocalDateTime.now()
             order.nextAttemptAt = null
+            transitionReservation(order, ReservationStatus.RELEASED)
             return OrderRetryDecision(terminal = true)
         }
 
@@ -154,17 +200,23 @@ class ExchangeOrderServiceImpl(
         return OrderRetryDecision(terminal = false, nextAttemptAt = order.nextAttemptAt)
     }
 
-    private fun executeArbitrageParentOrder(order: ExchangeOrder): ExchangeOrderResponse {
+    private fun executeArbitrageParentOrder(
+        order: ExchangeOrder,
+        buyRate: BestExchangeRateDto,
+        sellRate: BestExchangeRateDto
+    ): ExchangeOrderResponse {
         val currency = currencyRepository.findById(order.toCurrencyId)
             .orElseThrow { IllegalStateException("Currency not found: ${order.toCurrencyId}") }
 
         val buy = executeBuyOrder(
             createProcessingOrder(order.userId, OrderType.BUY, "KRW", currency.code, order.fromAmount),
-            isArbitrage = true
+            isArbitrage = true,
+            bestRate = buyRate
         )
         val sell = executeSellOrder(
             createProcessingOrder(order.userId, OrderType.SELL, currency.code, "KRW", buy.toAmount),
-            isArbitrage = true
+            isArbitrage = true,
+            bestRate = sellRate
         )
 
         order.bankId = sell.bankId
@@ -172,6 +224,7 @@ class ExchangeOrderServiceImpl(
         order.toAmount = sell.toAmount
         order.status = OrderStatus.SETTLED
         order.completedAt = LocalDateTime.now()
+        transitionReservation(order, ReservationStatus.CONSUMED)
         saveCompletedEvent(order)
 
         log.info(
@@ -184,15 +237,13 @@ class ExchangeOrderServiceImpl(
         return order.toDto()
     }
 
-    private fun executeBuyOrder(order: ExchangeOrder, isArbitrage: Boolean): ExchangeOrderResponse {
+    private fun executeBuyOrder(
+        order: ExchangeOrder,
+        isArbitrage: Boolean,
+        bestRate: BestExchangeRateDto
+    ): ExchangeOrderResponse {
         val fromCurrency = getCurrency(order.fromCurrencyId)
         val toCurrency = getCurrency(order.toCurrencyId)
-        val bestRate = if (isArbitrage) {
-            exchangeService.getBestBuyBaseRate(toCurrency.code)
-        } else {
-            exchangeService.getBestBuyRate(toCurrency.code)
-        }
-
         require(order.fromAmount >= bestRate.bestRate) {
             "Minimum exchange amount not met for ${toCurrency.code}"
         }
@@ -262,20 +313,21 @@ class ExchangeOrderServiceImpl(
 
         order.status = OrderStatus.SETTLED
         order.completedAt = LocalDateTime.now()
-        if (!isArbitrage) saveCompletedEvent(order)
+        if (!isArbitrage) {
+            transitionReservation(order, ReservationStatus.CONSUMED)
+            saveCompletedEvent(order)
+        }
 
         return order.toDto()
     }
 
-    private fun executeSellOrder(order: ExchangeOrder, isArbitrage: Boolean): ExchangeOrderResponse {
+    private fun executeSellOrder(
+        order: ExchangeOrder,
+        isArbitrage: Boolean,
+        bestRate: BestExchangeRateDto
+    ): ExchangeOrderResponse {
         val fromCurrency = getCurrency(order.fromCurrencyId)
         val toCurrency = getCurrency(order.toCurrencyId)
-        val bestRate = if (isArbitrage) {
-            exchangeService.getBestSellBaseRate(fromCurrency.code)
-        } else {
-            exchangeService.getBestSellRate(fromCurrency.code)
-        }
-
         require(order.fromAmount >= fromCurrency.unit) {
             "Minimum exchange amount not met for ${fromCurrency.code}"
         }
@@ -292,7 +344,7 @@ class ExchangeOrderServiceImpl(
         val commissionAmount = ExchangeCommissionPolicy.calculate(
             baseAmount = rawToAmount,
             scale = toCurrency.scale,
-            isArbitrage = isArbitrage
+            isArbitrage = false
         )
         val toAmount = rawToAmount.minus(commissionAmount)
 
@@ -345,7 +397,10 @@ class ExchangeOrderServiceImpl(
 
         order.status = OrderStatus.SETTLED
         order.completedAt = LocalDateTime.now()
-        if (!isArbitrage) saveCompletedEvent(order)
+        if (!isArbitrage) {
+            transitionReservation(order, ReservationStatus.CONSUMED)
+            saveCompletedEvent(order)
+        }
 
         return order.toDto()
     }
@@ -356,7 +411,9 @@ class ExchangeOrderServiceImpl(
         fromCurrencyCode: String,
         toCurrencyCode: String,
         fromAmount: BigDecimal,
-        idempotencyKey: String?
+        idempotencyKey: String?,
+        expectedRate: BigDecimal?,
+        expectedCounterRate: BigDecimal? = null
     ): ExchangeOrder {
         requestValidator.lockUser(userId)
         val fromCurrency = currencyRepository.findByCode(fromCurrencyCode.uppercase())
@@ -369,13 +426,45 @@ class ExchangeOrderServiceImpl(
             }
         }
 
-        val usdEquivalentAmount = requestValidator.validateAfterUserLock(
+        val businessDate = java.time.LocalDate.now(SEOUL_ZONE)
+        if (orderType == OrderType.ARBITRAGE && fromAmount.compareTo(ArbitrageQuotePolicy.AMOUNT_KRW) != 0) {
+            throw UserException(ErrorCode.ARBITRAGE_AMOUNT_EXCEEDED)
+        }
+        val arbitrageSlot = if (orderType == OrderType.ARBITRAGE) {
+            val occupied = exchangeOrderRepository.findOccupiedArbitrageSlots(userId, businessDate).toSet()
+            (1..ArbitrageQuotePolicy.DAILY_LIMIT).firstOrNull { it !in occupied }
+                ?: throw UserException(ErrorCode.ARBITRAGE_DAILY_LIMIT_EXCEEDED)
+        } else null
+        requestValidator.validateAfterUserLock(
             userId = userId,
             orderType = orderType,
             fromCurrency = fromCurrency,
             toCurrency = toCurrency,
             fromAmount = fromAmount
         )
+
+        val quote = when (orderType) {
+            OrderType.BUY -> exchangeService.getBestBuyRate(toCurrency.code)
+            OrderType.SELL -> exchangeService.getBestSellRate(fromCurrency.code)
+            OrderType.ARBITRAGE -> exchangeService.getBestBuyBaseRate(toCurrency.code)
+        }
+        val counterQuote = if (orderType == OrderType.ARBITRAGE) {
+            exchangeService.getBestSellBaseRate(toCurrency.code)
+        } else null
+        if (expectedRate != null && expectedRate.compareTo(quote.bestRate) != 0 ||
+            expectedCounterRate != null && (counterQuote == null ||
+                expectedCounterRate.compareTo(counterQuote.bestRate) != 0)) {
+            throw UserException(ErrorCode.RATE_CHANGED)
+        }
+        if (orderType != OrderType.SELL && fromAmount < quote.bestRate) {
+            throw UserException(ErrorCode.INVALID_EXCHANGE_AMOUNT)
+        }
+        if (orderType == OrderType.ARBITRAGE && ArbitrageQuotePolicy.estimate(
+                fromCurrency, toCurrency, quote.bestRate,
+                requireNotNull(counterQuote).bestRate, exchangeService
+            ).profitKrw < BigDecimal.ZERO) {
+            throw UserException(ErrorCode.ARBITRAGE_NOT_PROFITABLE)
+        }
 
         return saveOrder(
             userId = userId,
@@ -385,7 +474,10 @@ class ExchangeOrderServiceImpl(
             fromAmount = fromAmount,
             status = OrderStatus.QUEUED,
             idempotencyKey = idempotencyKey,
-            usdEquivalentAmount = usdEquivalentAmount
+            quotedRate = quote.bestRate,
+            quotedCounterRate = counterQuote?.bestRate,
+            businessDate = businessDate,
+            arbitrageSlot = arbitrageSlot
         )
     }
 
@@ -425,8 +517,7 @@ class ExchangeOrderServiceImpl(
             toCurrency = toCurrency,
             fromAmount = fromAmount,
             status = OrderStatus.PROCESSING,
-            idempotencyKey = null,
-            usdEquivalentAmount = null
+            idempotencyKey = null
         ).also { it.processedAt = LocalDateTime.now() }
     }
 
@@ -438,7 +529,10 @@ class ExchangeOrderServiceImpl(
         fromAmount: BigDecimal,
         status: OrderStatus,
         idempotencyKey: String?,
-        usdEquivalentAmount: BigDecimal?
+        quotedRate: BigDecimal? = null,
+        quotedCounterRate: BigDecimal? = null,
+        businessDate: java.time.LocalDate? = null,
+        arbitrageSlot: Int? = null
     ): ExchangeOrder {
         val order = exchangeOrderRepository.save(
             ExchangeOrder(
@@ -449,14 +543,26 @@ class ExchangeOrderServiceImpl(
                 fromAmount = fromAmount,
                 toAmount = BigDecimal.ZERO,
                 exchangeRate = BigDecimal.ZERO,
+                quotedRate = quotedRate,
+                quotedCounterRate = quotedCounterRate,
+                arbitrageSlotDate = businessDate.takeIf { orderType == OrderType.ARBITRAGE && status == OrderStatus.QUEUED },
+                arbitrageSlotNumber = arbitrageSlot,
                 orderType = orderType,
                 status = status,
-                idempotencyKey = idempotencyKey,
-                usdEquivalentAmount = usdEquivalentAmount
+                idempotencyKey = idempotencyKey
             )
         )
 
         if (status == OrderStatus.QUEUED) {
+            reservationRepository.save(
+                ExchangeReservation(
+                    orderId = order.id!!,
+                    userId = userId,
+                    fromCurrencyId = fromCurrency.id,
+                    fromAmount = fromAmount,
+                    businessDate = requireNotNull(businessDate)
+                )
+            )
             outboxEventRepository.save(
                 OutboxEvent(
                     aggregateId = order.id!!,
@@ -477,6 +583,25 @@ class ExchangeOrderServiceImpl(
         outboxEventRepository.save(
             OutboxEvent(aggregateId = order.id!!, eventType = OutboxEventType.ORDER_COMPLETED)
         )
+    }
+
+    private fun transitionReservation(order: ExchangeOrder, target: ReservationStatus) {
+        val reservation = reservationRepository.findById(order.id!!).orElse(null) ?: run {
+            check(order.quotedRate == null) { "Reservation missing for accepted order ${order.id}" }
+            return
+        }
+        check(reservation.status == ReservationStatus.ACTIVE || reservation.status == target) {
+            "Cannot change reservation ${order.id} from ${reservation.status} to $target"
+        }
+        reservation.status = target
+        if (target == ReservationStatus.RELEASED) {
+            order.arbitrageSlotDate = null
+            order.arbitrageSlotNumber = null
+        }
+    }
+
+    companion object {
+        private val SEOUL_ZONE: ZoneId = ZoneId.of("Asia/Seoul")
     }
 
     private fun recordTransactions(

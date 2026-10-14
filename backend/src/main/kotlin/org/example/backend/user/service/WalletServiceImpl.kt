@@ -4,7 +4,7 @@ import org.example.backend.enums.WalletTransactionType
 import org.example.backend.enums.CompanyAccount
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
-import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.finance.repository.InternalAccountRepository
 import org.example.backend.user.dto.DepositWithdrawalCommand
@@ -25,7 +25,7 @@ class WalletServiceImpl(
     private val simulatedBankBalanceRepository: SimulatedBankBalanceRepository,
     private val userRepository: UserRepository,
     private val currencyRepository: CurrencyRepository,
-    private val exchangeOrderRepository: ExchangeOrderRepository,
+    private val reservationRepository: ExchangeReservationRepository,
     private val depositWithdrawalService: DepositWithdrawalService,
     @Value("\${app.bank.simulation-enabled:false}") private val bankSimulationEnabled: Boolean
 ) : WalletService {
@@ -104,11 +104,7 @@ class WalletServiceImpl(
         val cashAccount = lockCashAccount(currencyId)
         val bankBalance = simulatedBankBalanceRepository.findByAccountIdForUpdate(userAccount.id!!)
             ?: throw UserException(ErrorCode.SIMULATED_BANK_BALANCE_NOT_FOUND)
-        val reservedAmount = exchangeOrderRepository.sumReservedFromAmount(
-            userId,
-            currencyId,
-            ExchangeOrderRepository.RESERVING_STATUSES
-        )
+        val reservedAmount = reservationRepository.sumActiveFunds(userId, currencyId)
         if (wallet.balance.subtract(reservedAmount) < amount) {
             throw UserException(ErrorCode.INSUFFICIENT_WALLET_BALANCE)
         }

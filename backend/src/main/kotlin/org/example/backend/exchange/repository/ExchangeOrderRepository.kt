@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param
 import org.example.backend.enums.OrderStatus
 import java.math.BigDecimal
 import java.time.LocalDateTime
+import java.time.LocalDate
 
 interface ExchangeOrderRepository : JpaRepository<ExchangeOrder, Long> {
     companion object {
@@ -24,6 +25,9 @@ interface ExchangeOrderRepository : JpaRepository<ExchangeOrder, Long> {
     fun findByIdForUpdate(id: Long): ExchangeOrder?
 
     fun findByUserIdAndIdempotencyKey(userId: Long, idempotencyKey: String): ExchangeOrder?
+
+    @Query("select o.arbitrageSlotNumber from ExchangeOrder o where o.userId = :userId and o.arbitrageSlotDate = :date")
+    fun findOccupiedArbitrageSlots(userId: Long, date: LocalDate): List<Int>
 
     fun findTop100ByStatusInAndRequestedAtBeforeAndIdGreaterThanOrderByIdAsc(
         statuses: Collection<OrderStatus>,
@@ -46,20 +50,4 @@ interface ExchangeOrderRepository : JpaRepository<ExchangeOrder, Long> {
         @Param("statuses") statuses: Collection<OrderStatus>
     ): BigDecimal
 
-    @Query(
-        """
-        select coalesce(sum(o.usdEquivalentAmount), 0)
-        from ExchangeOrder o
-        where o.userId = :userId
-          and o.requestedAt >= :startAt
-          and o.requestedAt < :endAt
-          and o.status in :statuses
-        """
-    )
-    fun sumDailyUsdEquivalentAmount(
-        @Param("userId") userId: Long,
-        @Param("startAt") startAt: LocalDateTime,
-        @Param("endAt") endAt: LocalDateTime,
-        @Param("statuses") statuses: Collection<OrderStatus>
-    ): BigDecimal
 }

@@ -1,7 +1,8 @@
 package org.example.backend.exchange.service
 
-import org.example.backend.enums.OrderStatus
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.finance.repository.CurrencyRepository
 import org.springframework.http.HttpStatus
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Service
@@ -31,19 +32,48 @@ data class DailyRates(
 
 data class WalletBalance(val currency: String, val balance: BigDecimal, val available: BigDecimal)
 data class ExchangeSummary(
-    val usedUsd: BigDecimal,
-    val limitUsd: BigDecimal,
-    val remainingUsd: BigDecimal,
+    val arbitrageUsedCount: Int,
+    val arbitrageLimitCount: Int,
+    val arbitrageRemainingCount: Int,
     val wallets: List<WalletBalance>
+)
+data class ArbitrageTerms(
+    val currency: String,
+    val amountKrw: BigDecimal,
+    val buyRate: BigDecimal,
+    val sellRate: BigDecimal,
+    val foreignAmount: BigDecimal,
+    val feeKrw: BigDecimal,
+    val estimatedReceiveKrw: BigDecimal,
+    val estimatedProfitKrw: BigDecimal
 )
 
 @Service
 @Transactional(readOnly = true)
 class ExchangeDashboardService(
     private val jdbc: NamedParameterJdbcTemplate,
-    private val validator: ExchangeOrderRequestValidator,
-    private val orders: ExchangeOrderRepository
+    private val reservations: ExchangeReservationRepository,
+    private val orders: ExchangeOrderRepository,
+    private val currencies: CurrencyRepository,
+    private val exchangeService: ExchangeService
 ) {
+    fun arbitrageTerms(currencyCode: String): ArbitrageTerms {
+        val krw = currencies.findByCode("KRW")
+        val foreign = currencies.findByCode(currencyCode)
+        val buyRate = exchangeService.getBestBuyBaseRate(currencyCode).bestRate
+        val sellRate = exchangeService.getBestSellBaseRate(currencyCode).bestRate
+        val estimate = ArbitrageQuotePolicy.estimate(krw, foreign, buyRate, sellRate, exchangeService)
+        return ArbitrageTerms(
+            currencyCode,
+            ArbitrageQuotePolicy.AMOUNT_KRW,
+            buyRate,
+            sellRate,
+            estimate.foreignAmount,
+            estimate.feeKrw,
+            estimate.receiveKrw,
+            estimate.profitKrw
+        )
+    }
     fun rates(currency: String): DailyRates {
         if (!currency.matches(Regex("[A-Z]{3}"))) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid currency")
@@ -75,17 +105,17 @@ class ExchangeDashboardService(
     }
 
     fun summary(userId: Long): ExchangeSummary {
-        val used = validator.dailyUsedUsd(userId)
-        val limit = ExchangeOrderRequestValidator.DAILY_LIMIT_USD
-        val reserving = listOf(OrderStatus.REQUESTED, OrderStatus.QUEUED, OrderStatus.PROCESSING, OrderStatus.PENDING)
+        val today = LocalDate.now(ZoneId.of("Asia/Seoul"))
+        val used = orders.findOccupiedArbitrageSlots(userId, today).size
+        val limit = ArbitrageQuotePolicy.DAILY_LIMIT
         val wallets = jdbc.query(
             "SELECT w.currency_id, c.code, w.balance FROM wallet w JOIN currency c ON c.id = w.currency_id WHERE w.user_id = :userId ORDER BY c.code",
             mapOf("userId" to userId)
         ) { rs, _ ->
             val balance = rs.getBigDecimal("balance")
-            val reserved = orders.sumReservedFromAmount(userId, rs.getLong("currency_id"), reserving)
+            val reserved = reservations.sumActiveFunds(userId, rs.getLong("currency_id"))
             WalletBalance(rs.getString("code"), balance, balance.subtract(reserved).max(BigDecimal.ZERO))
         }
-        return ExchangeSummary(used, limit, limit.subtract(used).max(BigDecimal.ZERO), wallets)
+        return ExchangeSummary(used, limit, (limit - used).coerceAtLeast(0), wallets)
     }
 }

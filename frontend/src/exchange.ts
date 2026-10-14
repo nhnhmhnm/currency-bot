@@ -5,7 +5,8 @@ export type Mode = 'buy' | 'sell' | 'arbitrage';
 export type Metric = 'buyRate' | 'sellRate' | 'baseRate';
 export type RatePoint = { bankId: number; bankName: string; time: string; buyRate: string | number | null; sellRate: string | number | null; baseRate: string | number | null };
 export type Rates = { date: string; currency: string; unit: string | number; scale: number; points: RatePoint[] };
-export type Summary = { usedUsd: string | number; limitUsd: string | number; remainingUsd: string | number; wallets: { currency: string; balance: string | number; available: string | number }[] };
+export type Summary = { arbitrageUsedCount: number; arbitrageLimitCount: number; arbitrageRemainingCount: number; wallets: { currency: string; balance: string | number; available: string | number }[] };
+export type ArbitrageTerms = { currency: string; amountKrw: string | number; buyRate: string | number; sellRate: string | number; foreignAmount: string | number; feeKrw: string | number; estimatedReceiveKrw: string | number; estimatedProfitKrw: string | number };
 export const rateColors: Record<Metric, string> = { buyRate: 'var(--buy)', sellRate: 'var(--sell)', baseRate: 'var(--base)' };
 export const bankDashes = [undefined, '8 4', '2 4', '10 3 2 3'];
 export const format = (value: Decimal.Value | null | undefined, digits = 2) => value == null ? '—' : new Decimal(value).toNumber().toLocaleString('ko-KR', { maximumFractionDigits: digits, minimumFractionDigits: digits });
@@ -25,11 +26,12 @@ export function best(rates: Rates | null, metric: Metric, direction: 'min' | 'ma
     .sort((a, b) => new Decimal(a[metric]!).cmp(b[metric]!) * (direction === 'min' ? 1 : -1))[0];
 }
 
-export function minimumOrderAmount(rates: Rates | null, mode: Mode): string {
+export function minimumOrderAmount(rates: Rates | null, mode: Mode, terms?: ArbitrageTerms | null): string {
+  if (mode === 'arbitrage') return terms && rates && terms.currency === rates.currency ? new Decimal(terms.amountKrw).toFixed(0) : '1000000';
   if (!rates || !new Decimal(rates.unit).gt(0)) return '0';
-  const quote = best(rates, mode === 'arbitrage' ? 'baseRate' : mode === 'buy' ? 'buyRate' : 'sellRate', mode === 'sell' ? 'max' : 'min');
+  const quote = best(rates, mode === 'buy' ? 'buyRate' : 'sellRate', mode === 'sell' ? 'max' : 'min');
   if (!quote) return '0';
-  return mode === 'sell' ? new Decimal(rates.unit).toFixed() : new Decimal(quote[mode === 'arbitrage' ? 'baseRate' : 'buyRate']!).ceil().toFixed(0);
+  return mode === 'sell' ? new Decimal(rates.unit).toFixed() : new Decimal(quote.buyRate!).ceil().toFixed(0);
 }
 
 export function estimate(rates: Rates | null, mode: Mode, amount: string) {
@@ -43,19 +45,24 @@ export function estimate(rates: Rates | null, mode: Mode, amount: string) {
     if (!sell) return null;
     const gross = input.mul(normalized(sell.sellRate!)).toDecimalPlaces(0, Decimal.ROUND_DOWN);
     const fee = commission(gross);
-    return { receive: gross.minus(fee), fee, bank: sell.bankName, rate: sell.sellRate!, profit: null };
+    return { receive: gross.minus(fee), fee, bank: sell.bankName, rate: sell.sellRate!, counterRate: null, profit: null };
   }
   if (!buy || (mode === 'arbitrage' && !sell)) return null;
   const fee = mode === 'buy' ? commission(input) : new Decimal(0);
   const rate = mode === 'buy' ? buy.buyRate! : buy.baseRate!;
   const fx = input.minus(fee).div(normalized(rate)).toDecimalPlaces(10, Decimal.ROUND_DOWN).toDecimalPlaces(rates.scale, Decimal.ROUND_DOWN);
-  const receive = mode === 'buy' ? fx : fx.mul(normalized(sell!.baseRate!)).toDecimalPlaces(0, Decimal.ROUND_DOWN);
-  return { receive, fee, bank: mode === 'buy' ? buy.bankName : `${buy.bankName} → ${sell!.bankName}`, rate, profit: mode === 'arbitrage' ? receive.minus(input) : null };
+  const gross = mode === 'buy' ? fx : fx.mul(normalized(sell!.baseRate!)).toDecimalPlaces(0, Decimal.ROUND_DOWN);
+  const totalFee = mode === 'arbitrage' ? commission(gross) : fee;
+  const receive = mode === 'arbitrage' ? gross.minus(totalFee) : gross;
+  return { receive, fee: totalFee, bank: mode === 'buy' ? buy.bankName : `${buy.bankName} → ${sell!.bankName}`, rate, counterRate: mode === 'arbitrage' ? sell!.baseRate! : null, profit: mode === 'arbitrage' ? receive.minus(input) : null };
 }
 
-export function orderRequest(mode: Mode, currency: string, amount: string) {
+export function orderRequest(mode: Mode, currency: string, amount: string, rate?: Decimal.Value, counterRate?: Decimal.Value | null) {
   const parameter = mode === 'buy' ? 'toCurrencyCode' : mode === 'sell' ? 'fromCurrencyCode' : 'currencyCode';
-  return `/exchange/${mode}?${new URLSearchParams({ [parameter]: currency, fromAmount: new Decimal(amount).toFixed() })}`;
+  const params = new URLSearchParams({ [parameter]: currency, fromAmount: new Decimal(amount).toFixed() });
+  if (rate != null) params.set('expectedRate', new Decimal(rate).toFixed());
+  if (counterRate != null) params.set('expectedCounterRate', new Decimal(counterRate).toFixed());
+  return `/exchange/${mode}?${params}`;
 }
 
 export function sampleRates(currency: string): Rates {

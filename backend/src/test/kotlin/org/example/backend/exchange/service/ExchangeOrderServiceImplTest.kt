@@ -13,6 +13,7 @@ import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
 import org.example.backend.exchange.domain.ExchangeOrder
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.exchange.repository.OutboxEventRepository
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.repository.CurrencyRepository
@@ -30,7 +31,8 @@ class ExchangeOrderServiceImplTest : FunSpec({
         currencyRepository = currencyRepository,
         postingService = mockk(),
         requestValidator = requestValidator,
-        outboxEventRepository = mockk<OutboxEventRepository>()
+        outboxEventRepository = mockk<OutboxEventRepository>(),
+        reservationRepository = mockk<ExchangeReservationRepository>()
     )
     val krw = Currency(id = 1L, code = "KRW", name = "Korean Won", scale = 0, unit = BigDecimal.ONE)
     val usd = Currency(id = 2L, code = "USD", name = "US Dollar", scale = 2, unit = BigDecimal.ONE)

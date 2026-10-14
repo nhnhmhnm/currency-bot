@@ -6,8 +6,9 @@ async function dashboard(page: Page, options: { authenticated?: boolean; failRat
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/rates')) return options.failRates ? route.fulfill({ status: 503 }) : route.fulfill({ json: sampleRates(url.searchParams.get('currency') || 'USD') });
+    if (url.pathname.endsWith('/arbitrage/terms')) return route.fulfill({ json: { currency: url.searchParams.get('currency') || 'USD', amountKrw: 1000000, buyRate: 1372, sellRate: 1390, foreignAmount: 728.86, feeKrw: 31, estimatedReceiveKrw: 1013000, estimatedProfitKrw: 13000 } });
     if (url.pathname.endsWith('/me')) return route.fulfill({ json: { id: 2, name: '테스터', device: 'tester' } });
-    if (url.pathname.endsWith('/summary')) return route.fulfill({ json: { usedUsd: 0, limitUsd: 4000, remainingUsd: 4000, wallets: [{ currency: 'KRW', balance: 1000000, available: 1000000 }, { currency: 'USD', balance: 200, available: 200 }, { currency: 'JPY', balance: 20000, available: 20000 }] } });
+    if (url.pathname.endsWith('/summary')) return route.fulfill({ json: { arbitrageUsedCount: 0, arbitrageLimitCount: 4, arbitrageRemainingCount: 4, wallets: [{ currency: 'KRW', balance: 1000000, available: 1000000 }, { currency: 'USD', balance: 200, available: 200 }, { currency: 'JPY', balance: 20000, available: 20000 }] } });
     return route.fulfill({ status: 404 });
   });
 }
@@ -18,7 +19,7 @@ test('dashboard renders chart, local visual assets and responsive layout', async
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await expect(page.locator('.recharts-line-curve')).toHaveCount(4);
-  await expect(page.locator('.limit-number')).toContainText('0.00');
+  await expect(page.locator('.limit-number')).toContainText('0/ 4회');
   await expect(page.getByRole('row')).toHaveCount(5);
   expect(await page.locator('.header-currency-tab img').evaluateAll(images => images.every(image => (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -123,6 +124,9 @@ test('buy, sell and arbitrage require confirmation and use separate endpoints', 
   await page.getByRole('button', { name: '주문 접수', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '매매기준율 재테크 주문', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '주문 금액' })).toHaveValue('1000000');
+  await expect(page.getByRole('textbox', { name: '주문 금액' })).toHaveAttribute('readonly', '');
+  await expect(page.locator('.quote-details')).toContainText('수수료 차감 후 예상 순수익');
   await page.getByRole('button', { name: '재테크 주문 확인' }).click();
   await expect(page.getByRole('dialog')).toContainText('수익을 보장하지 않습니다');
   await page.getByRole('button', { name: '주문 접수', exact: true }).click();
@@ -133,6 +137,18 @@ test('buy, sell and arbitrage require confirmation and use separate endpoints', 
   expect(requests[2].query).toContain('currencyCode=USD');
   expect(new Set(requests.map(request => request.key)).size).toBe(3);
   expect(requests.every(request => request.key)).toBe(true);
+});
+
+test('canceled arbitrage shows the rate-change reason after acceptance', async ({ page }) => {
+  await dashboard(page, { authenticated: true });
+  await page.route('**/api/exchange/arbitrage?*', route => route.fulfill({ status: 202, contentType: 'text/plain', body: 'ARBITRAGE order accepted. orderId=42' }));
+  await page.route('**/api/exchange/orders/42', route => route.fulfill({ json: { status: 'CANCELED', cancellationReason: 'RATE_CHANGED' } }));
+  await page.goto('/');
+  await page.getByRole('button', { name: '매매기준율 재테크 주문', exact: true }).click();
+  await page.getByRole('button', { name: '재테크 주문 확인' }).click();
+  await expect(page.getByRole('dialog')).toContainText('수수료 차감 후 예상 순수익');
+  await page.getByRole('button', { name: '주문 접수', exact: true }).click();
+  await expect(page.locator('.order-feedback')).toContainText('환율이 변경되어 취소되었습니다');
 });
 
 test('uncertain submission reuses its idempotency key', async ({ page }) => {

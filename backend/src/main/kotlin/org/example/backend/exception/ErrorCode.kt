@@ -38,4 +38,8 @@ enum class ErrorCode (
   INVALID_EXCHANGE_AMOUNT(HttpStatus.BAD_REQUEST, 501, "exchange amount must be positive"),
   DAILY_EXCHANGE_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, 502, "daily exchange limit exceeded"),
   IDEMPOTENCY_KEY_CONFLICT(HttpStatus.CONFLICT, 503, "idempotency key was already used for another request"),
+  RATE_CHANGED(HttpStatus.CONFLICT, 504, "exchange rate changed; review the quote and retry"),
+  ARBITRAGE_DAILY_LIMIT_EXCEEDED(HttpStatus.CONFLICT, 505, "arbitrage is limited to four orders per business day"),
+  ARBITRAGE_AMOUNT_EXCEEDED(HttpStatus.BAD_REQUEST, 506, "arbitrage amount must be exactly 1000000 KRW"),
+  ARBITRAGE_NOT_PROFITABLE(HttpStatus.BAD_REQUEST, 507, "no profitable arbitrage is available at these rates"),
 }

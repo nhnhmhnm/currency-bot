@@ -17,4 +17,7 @@ class ExchangeDashboardController(private val dashboard: ExchangeDashboardServic
 
     @GetMapping("/summary")
     fun summary(@AuthenticationPrincipal user: UserPrincipal) = dashboard.summary(user.id)
+
+    @GetMapping("/arbitrage/terms")
+    fun arbitrageTerms(@RequestParam currency: String) = dashboard.arbitrageTerms(currency.uppercase(Locale.ROOT))
 }

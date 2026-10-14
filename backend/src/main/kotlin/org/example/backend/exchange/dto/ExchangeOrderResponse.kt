@@ -16,5 +16,7 @@ data class ExchangeOrderResponse(
     val exchangeRate: BigDecimal,
 
     val status: PublicOrderStatus,
-    val requestedAt: LocalDateTime
+    val requestedAt: LocalDateTime,
+    val quotedRate: BigDecimal? = null,
+    val cancellationReason: String? = null
 )

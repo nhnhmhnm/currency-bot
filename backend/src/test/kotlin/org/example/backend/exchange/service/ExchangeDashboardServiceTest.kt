@@ -3,7 +3,13 @@ package org.example.backend.exchange.service
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.finance.repository.CurrencyRepository
+import org.example.backend.finance.domain.Currency
+import org.example.backend.finance.repository.ExchangeRateJdbcRepository
+import org.example.backend.exchange.dto.BestExchangeRateDto
+import org.example.backend.enums.ExchangeType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.BeforeEach
@@ -18,7 +24,7 @@ import java.util.UUID
 
 class ExchangeDashboardServiceTest {
     private lateinit var jdbc: NamedParameterJdbcTemplate
-    private val validator = mockk<ExchangeOrderRequestValidator>()
+    private val reservations = mockk<ExchangeReservationRepository>()
     private val orders = mockk<ExchangeOrderRepository>()
     private lateinit var service: ExchangeDashboardService
 
@@ -31,7 +37,7 @@ class ExchangeDashboardServiceTest {
         jdbc.jdbcTemplate.execute("CREATE TABLE wallet (user_id BIGINT, currency_id BIGINT, balance DECIMAL(19,2))")
         jdbc.jdbcTemplate.update("INSERT INTO currency VALUES (1, 'USD', 1, 2), (2, 'JPY', 100, 0)")
         jdbc.jdbcTemplate.update("INSERT INTO bank VALUES (1, 'Bank A')")
-        service = ExchangeDashboardService(jdbc, validator, orders)
+        service = ExchangeDashboardService(jdbc, reservations, orders, mockk<CurrencyRepository>(), mockk<ExchangeService>())
     }
 
     @Test
@@ -53,12 +59,33 @@ class ExchangeDashboardServiceTest {
     @Test
     fun `summary uses server quota and only the authenticated users wallets`() {
         jdbc.jdbcTemplate.update("INSERT INTO wallet VALUES (7, 1, 100), (8, 1, 900)")
-        every { validator.dailyUsedUsd(7) } returns BigDecimal("1250")
-        every { orders.sumReservedFromAmount(7, 1, any()) } returns BigDecimal("40")
+        every { orders.findOccupiedArbitrageSlots(7, any()) } returns listOf(1, 3)
+        every { reservations.sumActiveFunds(7, 1, any()) } returns BigDecimal("40")
         val result = service.summary(7)
-        assertEquals(0, result.remainingUsd.compareTo(BigDecimal("2750")))
+        assertEquals(2, result.arbitrageRemainingCount)
         assertEquals(1, result.wallets.size)
         assertEquals(0, result.wallets.first().available.compareTo(BigDecimal("60")))
-        verify(exactly = 1) { validator.dailyUsedUsd(7) }
+        verify(exactly = 1) { orders.findOccupiedArbitrageSlots(7, any()) }
+    }
+
+    @Test
+    fun `JPY arbitrage terms use fixed KRW amount and net profit without USD quote`() {
+        val currencies = mockk<CurrencyRepository>()
+        val exchange = mockk<ExchangeService>()
+        val calculator = ExchangeServiceImpl(mockk<ExchangeRateJdbcRepository>())
+        val krw = Currency(3L, "KRW", "Korean Won", 0, BigDecimal.ONE)
+        val jpy = Currency(2L, "JPY", "Japanese Yen", 0, BigDecimal("100"))
+        every { currencies.findByCode("KRW") } returns krw
+        every { currencies.findByCode("JPY") } returns jpy
+        every { exchange.getBestBuyBaseRate("JPY") } returns BestExchangeRateDto(1L, jpy.id, BigDecimal("900"), ExchangeType.BUY)
+        every { exchange.getBestSellBaseRate("JPY") } returns BestExchangeRateDto(1L, jpy.id, BigDecimal("910"), ExchangeType.SELL)
+        every { exchange.calculateExchange(any(), any(), any(), any()) } answers {
+            calculator.calculateExchange(firstArg(), secondArg(), thirdArg(), arg(3))
+        }
+
+        val terms = ExchangeDashboardService(jdbc, reservations, orders, currencies, exchange).arbitrageTerms("JPY")
+        assertEquals(BigDecimal("1000000"), terms.amountKrw)
+        assertEquals(BigDecimal("11079"), terms.estimatedProfitKrw)
+        verify(exactly = 0) { currencies.findByCode("USD") }
     }
 }

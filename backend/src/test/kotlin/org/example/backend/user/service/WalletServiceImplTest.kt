@@ -4,7 +4,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import org.example.backend.exception.ErrorCode
 import org.example.backend.exception.UserException
-import org.example.backend.exchange.repository.ExchangeOrderRepository
+import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.finance.repository.CurrencyRepository
 import org.example.backend.finance.repository.InternalAccountRepository
 import org.example.backend.user.repository.AccountRepository
@@ -25,7 +25,7 @@ class WalletServiceImplTest {
             simulatedBankBalanceRepository = mockk<SimulatedBankBalanceRepository>(),
             userRepository = mockk<UserRepository>(),
             currencyRepository = mockk<CurrencyRepository>(),
-            exchangeOrderRepository = mockk<ExchangeOrderRepository>(),
+            reservationRepository = mockk<ExchangeReservationRepository>(),
             depositWithdrawalService = mockk<DepositWithdrawalService>(),
             bankSimulationEnabled = false
         )

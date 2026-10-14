@@ -6,6 +6,7 @@ import org.example.backend.enums.OrderStatus
 import org.hibernate.annotations.CreationTimestamp
 import java.math.BigDecimal
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Entity
@@ -15,6 +16,10 @@ import java.time.LocalDateTime
         UniqueConstraint(
             name = "uk_exchange_order_user_idempotency_key",
             columnNames = ["user_id", "idempotency_key"]
+        ),
+        UniqueConstraint(
+            name = "uk_exchange_order_arbitrage_daily_slot_v2",
+            columnNames = ["user_id", "arbitrage_slot_date", "arbitrage_slot_number"]
         )
     ],
     indexes = [
@@ -47,8 +52,17 @@ class ExchangeOrder(
     @Column(name = "exchange_rate", nullable = false)
     var exchangeRate: BigDecimal,
 
-    @Column(name = "usd_equivalent_amount", precision = 19, scale = 6)
-    val usdEquivalentAmount: BigDecimal? = null,
+    @Column(name = "quoted_rate")
+    val quotedRate: BigDecimal? = null,
+
+    @Column(name = "quoted_counter_rate")
+    val quotedCounterRate: BigDecimal? = null,
+
+    @Column(name = "arbitrage_slot_date")
+    var arbitrageSlotDate: LocalDate? = null,
+
+    @Column(name = "arbitrage_slot_number")
+    var arbitrageSlotNumber: Int? = null,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "order_type", nullable = false)
