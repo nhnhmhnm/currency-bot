@@ -36,9 +36,9 @@ def insert_rate(exchange_rate: ExchangeRateDto) -> None:
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
-                        bank_id = VALUES(bank_id),
-                        currency_id = VALUES(currency_id),
-                        notice_time = VALUES(notice_time)
+                        base_rate = VALUES(base_rate),
+                        buy_rate = VALUES(buy_rate),
+                        sell_rate = VALUES(sell_rate)
                 """
                 cursor.execute(
                     sql,

@@ -5,7 +5,13 @@ import java.math.BigDecimal
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "exchange_rate")
+@Table(
+    name = "exchange_rate",
+    uniqueConstraints = [UniqueConstraint(
+        name = "uk_exchange_rate_bank_currency_notice",
+        columnNames = ["bank_id", "currency_id", "notice_time"]
+    )]
+)
 class ExchangeRate(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,
