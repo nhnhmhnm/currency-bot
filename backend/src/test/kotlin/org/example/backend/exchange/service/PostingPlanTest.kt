@@ -83,7 +83,8 @@ class PostingPlanTest {
             )
         }
 
-        PostingService(walletRepository, accountRepository, historyService, mockk(relaxed = true)).post(
+        PostingService(walletRepository, accountRepository, historyService, mockk(relaxed = true),
+            ExchangeOperationsSnapshotService(mockk(), mockk())).post(
             PostingPlan.sell(
                 3L, 10L, 2L, 1L,
                 BigDecimal("10"), BigDecimal("13000"), BigDecimal("12999"), BigDecimal.ONE

@@ -45,6 +45,14 @@ try {
             ForEach-Object { Write-Output $_.Line }
     } finally {
         Pop-Location
+        $remainingTables = @(docker exec -e "MYSQL_PWD=$rootPassword" mysql mysql -uroot -N -e "SHOW TABLES FROM $database")
+        if ($LASTEXITCODE -ne 0 -or $remainingTables.Count -ne 0) {
+            Write-Warning "The isolated MySQL test schema is not empty after the run"
+        }
+        $remainingRedisKeys = docker exec redis redis-cli -n 15 DBSIZE
+        if ($LASTEXITCODE -ne 0 -or $remainingRedisKeys -ne "0") {
+            Write-Warning "Redis DB 15 is not empty after the run"
+        }
     }
 } finally {
     [Environment]::SetEnvironmentVariable("CURRENCY_TEST_MYSQL_PASSWORD", $previousPassword, "Process")

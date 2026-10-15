@@ -18,6 +18,7 @@ class CompletedOrderWorker(
     private val views: CompletedOrderViewRepository
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+    private var lastScannedEventId = 0L
 
     @Scheduled(fixedDelayString = "\${app.completion.worker-delay-ms:1000}")
     fun processQueue() {
@@ -30,12 +31,11 @@ class CompletedOrderWorker(
 
     @Scheduled(fixedDelayString = "\${app.completion.recovery-delay-ms:30000}")
     fun recoverUnprojected() {
-        var lastId = 0L
-        do {
-            val batch = events.findTop100ByEventTypeAndIdGreaterThanOrderByIdAsc(OutboxEventType.ORDER_COMPLETED, lastId)
-            batch.filterNot { views.existsById(it.aggregateId) }.forEach { queue.ensureQueued(it.id!!) }
-            lastId = batch.lastOrNull()?.id ?: lastId
-        } while (batch.size == 100)
+        val batch = events.findTop100ByEventTypeAndIdGreaterThanOrderByIdAsc(
+            OutboxEventType.ORDER_COMPLETED, lastScannedEventId
+        )
+        batch.filterNot { views.existsById(it.aggregateId) }.forEach { queue.ensureQueued(it.id!!) }
+        lastScannedEventId = batch.lastOrNull()?.id ?: 0L
     }
 
     private fun process(delivery: StreamDelivery) {

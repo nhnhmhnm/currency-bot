@@ -402,6 +402,21 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `exchange operations snapshot is restricted to super and reports pending work`() {
+        exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "operations-snapshot")
+        fun auth(userId: Long, type: UserType) = authentication(UsernamePasswordAuthenticationToken(
+            UserPrincipal(userId, "operator", type), null, listOf(SimpleGrantedAuthority("ROLE_${type.name}"))
+        ))
+
+        mockMvc.perform(get("/api/admin/exchange/operations").with(auth(USER_ID, UserType.GENERAL)))
+            .andExpect(status().isForbidden)
+        mockMvc.perform(get("/api/admin/exchange/operations").with(auth(COMPANY_USER_ID, UserType.SUPER)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.incompleteOrders").value(1))
+            .andExpect(jsonPath("$.pendingOutboxEvents").value(1))
+    }
+
+    @Test
     fun `out of order completion events produce the same read model`() {
         val first = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "projection-first")
         val second = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "projection-second")

@@ -20,16 +20,17 @@ class PostingService(
     private val walletRepository: WalletRepository,
     private val internalAccountRepository: InternalAccountRepository,
     private val walletFxHistoryService: WalletFxHistoryService,
-    private val journalService: JournalService
+    private val journalService: JournalService,
+    private val operations: ExchangeOperationsSnapshotService
 ) {
     @Transactional(propagation = Propagation.MANDATORY)
     fun post(plan: PostingPlan) {
         val wallets = plan.walletPostings.map { it.currencyId }.distinct().sorted().associateWith { currencyId ->
-            walletRepository.findByUserIdAndCurrencyIdForUpdate(plan.userId, currencyId)
+            operations.measureLockWait { walletRepository.findByUserIdAndCurrencyIdForUpdate(plan.userId, currencyId) }
                 ?: throw UserException(ErrorCode.WALLET_NOT_FOUND)
         }
         val accounts = plan.accountPostings.map { it.code }.distinct().sortedBy { it.name }.associateWith { code ->
-            internalAccountRepository.findByCodeForUpdate(code)
+            operations.measureLockWait { internalAccountRepository.findByCodeForUpdate(code) }
                 ?.takeIf { it.currencyId == code.currencyId }
                 ?: throw UserException(ErrorCode.COMPANY_ACCOUNT_NOT_FOUND)
         }

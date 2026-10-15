@@ -43,7 +43,8 @@ class ExchangeOrderServiceImpl(
     private val postingService: PostingService,
     private val requestValidator: ExchangeOrderRequestValidator,
     private val outboxEventRepository: OutboxEventRepository,
-    private val reservationRepository: ExchangeReservationRepository
+    private val reservationRepository: ExchangeReservationRepository,
+    private val operations: ExchangeOperationsSnapshotService
 ) : ExchangeOrderService {
     private val log = LoggerFactory.getLogger(ExchangeOrderServiceImpl::class.java)
 
@@ -123,7 +124,7 @@ class ExchangeOrderServiceImpl(
 
     @Transactional
     override fun processQueuedOrder(orderId: Long): ExchangeOrderResponse {
-        val order = exchangeOrderRepository.findByIdForUpdate(orderId)
+        val order = operations.measureLockWait { exchangeOrderRepository.findByIdForUpdate(orderId) }
             ?: error("Exchange order not found: $orderId")
 
         if (order.status in terminalStatuses) {
@@ -134,7 +135,7 @@ class ExchangeOrderServiceImpl(
             if (due.isAfter(Instant.now())) throw OrderRetryNotDueException(due)
         }
 
-        requestValidator.lockUserForProcessing(order.userId)
+        operations.measureLockWait { requestValidator.lockUserForProcessing(order.userId) }
 
         val currency = getCurrency(if (order.orderType == OrderType.SELL) order.fromCurrencyId else order.toCurrencyId)
         val rate = when (order.orderType) {

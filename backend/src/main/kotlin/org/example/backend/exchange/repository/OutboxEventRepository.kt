@@ -6,6 +6,8 @@ import org.example.backend.exchange.domain.OutboxEvent
 import org.springframework.data.jpa.repository.JpaRepository
 
 interface OutboxEventRepository : JpaRepository<OutboxEvent, Long> {
+    fun countByStatus(status: OutboxEventStatus): Long
+    fun findTop1ByStatusOrderByCreatedAtAsc(status: OutboxEventStatus): OutboxEvent?
     fun findTop100ByStatusAndEventTypeOrderById(
         status: OutboxEventStatus,
         eventType: OutboxEventType

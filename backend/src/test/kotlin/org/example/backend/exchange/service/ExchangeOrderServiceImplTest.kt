@@ -32,7 +32,8 @@ class ExchangeOrderServiceImplTest : FunSpec({
         postingService = mockk(),
         requestValidator = requestValidator,
         outboxEventRepository = mockk<OutboxEventRepository>(),
-        reservationRepository = mockk<ExchangeReservationRepository>()
+        reservationRepository = mockk<ExchangeReservationRepository>(),
+        operations = mockk()
     )
     val krw = Currency(id = 1L, code = "KRW", name = "Korean Won", scale = 0, unit = BigDecimal.ONE)
     val usd = Currency(id = 2L, code = "USD", name = "US Dollar", scale = 2, unit = BigDecimal.ONE)
