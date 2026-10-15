@@ -1,1 +1,1 @@
-config.py
+# Crawler configuration reads credentials from environment variables.

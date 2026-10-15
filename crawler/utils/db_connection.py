@@ -22,43 +22,40 @@ def get_foreign_key_id(cursor, table: str, code: str) -> int:
 def insert_rate(exchange_rate: ExchangeRateDto) -> None:
     from config import DB_CONFIG
 
-    try:
-        with mysql.connector.connect(**DB_CONFIG) as conn:
-            with conn.cursor() as cursor:
-                # 외래키 조회
-                bank_id = get_foreign_key_id(cursor, "bank", exchange_rate.bank.value)
-                currency_id = get_foreign_key_id(cursor, "currency", exchange_rate.currency.value)
+    if DB_CONFIG is None:
+        raise RuntimeError("CRAWLER_DB_PASSWORD is required to save exchange rates")
 
-                # INSERT
-                sql = """
-                    INSERT INTO exchange_rate (
-                        bank_id, currency_id, base_rate, buy_rate, sell_rate, notice_time, created_at
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        base_rate = VALUES(base_rate),
-                        buy_rate = VALUES(buy_rate),
-                        sell_rate = VALUES(sell_rate)
-                """
-                cursor.execute(
-                    sql,
-                    (
-                        bank_id,
-                        currency_id,
-                        exchange_rate.base_rate,
-                        exchange_rate.buy_rate,
-                        exchange_rate.sell_rate,
-                        exchange_rate.notice_time,
-                        exchange_rate.created_at,
-                    ),
+    with mysql.connector.connect(**DB_CONFIG) as conn:
+        with conn.cursor() as cursor:
+            bank_id = get_foreign_key_id(cursor, "bank", exchange_rate.bank.value)
+            currency_id = get_foreign_key_id(cursor, "currency", exchange_rate.currency.value)
+
+            sql = """
+                INSERT INTO exchange_rate (
+                    bank_id, currency_id, base_rate, buy_rate, sell_rate, notice_time, created_at
                 )
-                conn.commit()
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    base_rate = VALUES(base_rate),
+                    buy_rate = VALUES(buy_rate),
+                    sell_rate = VALUES(sell_rate)
+            """
+            cursor.execute(
+                sql,
+                (
+                    bank_id,
+                    currency_id,
+                    exchange_rate.base_rate,
+                    exchange_rate.buy_rate,
+                    exchange_rate.sell_rate,
+                    exchange_rate.notice_time,
+                    exchange_rate.created_at,
+                ),
+            )
+            conn.commit()
 
-                print(
-                    "[DB] 저장 성공 : "
-                    f"{exchange_rate.bank.value} {exchange_rate.currency.value} "
-                    f"{exchange_rate.base_rate} {exchange_rate.created_at}"
-                )
-
-    except Exception as e:
-        print(f"[DB ERROR] {e}")
+            print(
+                "[DB] 저장 성공 : "
+                f"{exchange_rate.bank.value} {exchange_rate.currency.value} "
+                f"{exchange_rate.base_rate} {exchange_rate.created_at}"
+            )
