@@ -1,20 +1,39 @@
 # 8번 운영 전환·복구 체크리스트
 
-이 문서는 실행 기록이 아니다. 기존 `cuunit` 데이터베이스 전환은 보류 중이며, 아래 절차와 SQL을 적용하지 않았다.
+기존 데이터 삭제를 허용한 로컬 `cuunit`의 **빈 스키마 재구축** 절차다. `cuunit` 자체에는 아직 적용하지 않았다. 과거 주문·잔액·환율·분개를 이관하거나 임의 복원하지 않는다.
 
 ## 전환 전 차단 조건
 
-1. 접수 API와 모든 Worker를 중지하고, MySQL 백업을 별도 스키마에 복원해 무결성을 확인한다. Redis Stream/List의 pending 수와 DB 미완료 주문·Outbox 수를 함께 기록한다.
-2. 기존 지갑 `(user_id, currency_id)`, 연결계좌 `(bank_id, account_num)` 중복, 음수 잔액, 종료 주문의 활성 예약, 완료 주문의 전표·체결 누락을 조회한다. 발견 항목은 건별 원인을 확정하고 수정 승인·증적을 남긴다.
-3. 기존 `account.balance`는 외부 은행 잔액으로 간주해 자동 이관하지 않는다. `internal_account` 회사 현금·수수료 기초 금액은 실제 보유 자산과 고객 채무 대사 후 담당자 승인으로 확정한다. 과거 요약 기록에서 상세 분개를 추측해 생성하지 않는다.
-4. 1~4번 변경의 기존 DB용 기준선 DDL·데이터 이관·롤백 절차가 아직 없다. 이것이 준비되기 전에는 5~8번 SQL만 실행하거나 새 애플리케이션을 `cuunit`에 연결하지 않는다. 운영에서는 Hibernate `ddl-auto=update`에 스키마 변경을 맡기지 않고 검증 모드를 사용한다.
+1. API·Worker·크롤러를 모두 중지하고 `cuunit`에 활성 연결이 없는지 확인한다. 기존 주문/예약/Outbox 수와 Redis Stream pending·키 목록을 기록한다. 데이터 삭제가 허용됐더라도 미완료 정산을 새 DB로 넘기지 않는다.
+2. 기존 `cuunit` 전체를 리포지토리 밖에 백업하고 **다른 스키마에 복원**해 주요 테이블 건수와 조회 가능성을 확인한다. 복원 검증이 실패하면 삭제하지 않는다.
+3. Redis의 `order:queue:*`, `order:completion:*`, `access_token:*`, `refresh_token:*` 키를 확인한다. DB를 비운 뒤 과거 주문 키를 재사용하지 않도록 해당 프로젝트 키만 정리하고 JWT 서명 키를 교체한다. 다른 서비스와 공유하는 Redis DB에 `FLUSHDB`를 실행하지 않는다.
+4. 새 [빈 스키마 기준선](../backend/scripts/migrations/clean-baseline-mysql94.sql)은 **1~8번 변경을 모두 포함**한다. 기존 데이터용 [5~8번 SQL](../backend/scripts/migrations/step5-arbitrage-four-slots.sql)을 다시 적용하지 않는다. 애플리케이션 기본 `ddl-auto`는 `validate`이며 자동 DDL 변경으로 전환하지 않는다.
 
-## 격리 리허설과 전환
+## 격리 리허설 결과
 
-1. 복원한 격리 스키마에서 기준선 이관을 검증한 뒤 [5번](../backend/scripts/migrations/step5-arbitrage-four-slots.sql), [6번](../backend/scripts/migrations/step6-journal.sql), [7번](../backend/scripts/migrations/step7-completed-order-view.sql), [8번](../backend/scripts/migrations/step8-order-recovery-audit.sql) DDL을 순서대로 적용한다. 각 단계에서 제약·자릿수·행 수와 잔액을 비교한다.
-2. 기존 List 메시지를 소진하고 주문 상태·예약·접수 Outbox를 대조한다. List 키를 삭제해 전환하지 않는다. Streams Worker는 기존 접수 주문의 DB 복구 경로가 준비된 뒤 기동한다.
-3. 기초 잔액 기준점을 보관하고 신규 전표 이후 구간부터 대사를 수행한다. 완료 조회 모델은 완료 Outbox로 재생성하며 자금 원장으로 사용하지 않는다.
-4. 소액 모의 입금→환전→출금, 중복 요청, ACK 누락, 완료 이벤트 유실을 검증한다. 회사 현금·고객 지갑·분개·예약·미완료 주문 수가 일치할 때만 접수를 재개한다.
+- MySQL 9.4의 별도 빈 스키마에서 현행 JPA 모델로 생성한 19개 테이블을 DDL로 추출했다. 또 다른 격리 스키마에 DDL과 [기준정보 시드](../backend/scripts/migrations/clean-reference-seed.sql)를 적용한 뒤 앱을 `ddl-auto=validate`로 기동했다.
+- [가져오기 스크립트](../backend/scripts/import-clean-schema.ps1)는 세 번째 빈 격리 스키마에서 테이블 19개·통화 3개·은행 7개·회사 계정 4개를 재현했고, 같은 스키마 재실행은 거절했다. 스크립트는 DB 생성·삭제·백업을 수행하지 않는다.
+- 환율에는 `(bank_id, currency_id, notice_time)` 유니크 키를 추가했다. 네 번째 격리 스키마에서 같은 고시를 두 번 저장해 1행과 갱신된 매매기준율·매도율·매입율을 확인했다. 크롤러의 중복 처리도 세 환율 값을 갱신한다.
+
+## `cuunit` 실행 순서 (미실행)
+
+1. 위 백업 복원과 서비스 중지 조건을 확인하고, 기존 `cuunit` 삭제를 별도로 승인받아 **삭제 후 같은 이름의 빈 DB를 생성**한다. 이 단계가 실패하면 백업 복원 절차로 돌아가며 새 앱을 켜지 않는다.
+2. 빈 `cuunit`에 `powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/import-clean-schema.ps1 -Database cuunit`를 실행한다. 스크립트는 비어 있지 않은 DB를 거절한다.
+3. 앱을 `ddl-auto=validate`로 기동하고 통화 ID `1=KRW, 2=USD, 3=JPY`, 은행 코드, 회사 계정 4개·잔액 0, 주문·지갑·전표·예약 0건을 확인한다. 크롤러 설정의 DB가 새 `cuunit`인지 점검한 뒤 환율을 다시 수집한다.
+4. 기본 회사 현금과 신규 모의 은행 계좌 잔액은 0이다. 실제 환전 시험 전에는 **로컬 시뮬레이션용 기초 자금**을 별도 절차로 투입하고 금액·담당자·시각을 기록한다. 이를 운영 자산이나 실제 은행 입금으로 표현하지 않는다.
+5. 회원가입→계좌 생성/연결→모의 입금→BUY/SELL/차익거래→모의 출금, 중복 요청, 완료 조회·전표 대사를 확인한다. 오류가 나면 접수를 재개하지 않고 백업 복원 여부를 판단한다.
+
+로컬 수동 시험에서만 회사 KRW/USD/JPY 계정에 필요한 유동성을 정하고, 회원가입·계좌 생성 후 선택한 `account_id`의 `simulated_bank_balance`에 모의 자금을 넣는다. 두 잔액은 서로 다른 자금 원천이며 고객 지갑은 직접 충전하지 않는다. 예를 들어 아래는 **운영에서 실행하지 않는 수동 예시**다.
+
+```sql
+UPDATE internal_account SET balance = 10000000 WHERE code = 'KRW_ACCOUNT';
+UPDATE internal_account SET balance = 10000 WHERE code = 'USD_ACCOUNT';
+UPDATE internal_account SET balance = 1000000 WHERE code = 'JPY_ACCOUNT';
+-- 계좌 소유권·통화를 확인한 실제 account_id로 바꾼 뒤 실행한다.
+UPDATE simulated_bank_balance SET balance = 1000000 WHERE account_id = <account_id>;
+```
+
+기초 자금은 첫 거래 전 잔액의 근거로 별도 기록하고, 모의 입금 API를 사용해 고객 지갑으로 이동시킨다. 정식 기초 전표·승인 기능은 이 로컬 시험 절차에 포함되지 않는다.
 
 ## 장애와 수동 복구
 
