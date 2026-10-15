@@ -41,7 +41,7 @@ try {
         .\gradlew.bat test --no-daemon --rerun-tasks --tests org.example.backend.exchange.service.ExchangeSettlementRollbackIntegrationTest
         if ($LASTEXITCODE -ne 0) { throw "Real infrastructure tests failed" }
         $report = Join-Path (Get-Location) "build/test-results/test/TEST-org.example.backend.exchange.service.ExchangeSettlementRollbackIntegrationTest.xml"
-        Select-String -Path $report -Pattern '^(REAL_DEADLOCK|LOAD_BASELINE)' |
+        Select-String -Path $report -Pattern '^(REAL_DEADLOCK|REAL_CONSUMER_CRASH|LOAD_BASELINE|LOAD_SUSTAINED)' |
             ForEach-Object { Write-Output $_.Line }
     } finally {
         Pop-Location

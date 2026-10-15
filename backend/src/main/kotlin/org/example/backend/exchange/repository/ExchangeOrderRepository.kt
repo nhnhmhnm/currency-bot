@@ -12,6 +12,7 @@ import java.time.LocalDateTime
 import java.time.LocalDate
 
 interface ExchangeOrderRepository : JpaRepository<ExchangeOrder, Long> {
+    fun countByStatus(status: OrderStatus): Long
     companion object {
         val RESERVING_STATUSES = listOf(
             OrderStatus.REQUESTED,

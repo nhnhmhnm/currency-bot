@@ -22,6 +22,7 @@ import org.example.backend.exchange.repository.CompletedOrderViewRepository
 import org.example.backend.exchange.repository.ExchangeOrderRepository
 import org.example.backend.exchange.repository.ExchangeReservationRepository
 import org.example.backend.exchange.repository.OutboxEventRepository
+import org.example.backend.exchange.repository.OrderRecoveryAuditRepository
 import org.example.backend.exchange.repository.TransactionRepository
 import org.example.backend.finance.domain.Currency
 import org.example.backend.finance.domain.InternalAccount
@@ -108,6 +109,9 @@ class ExchangeSettlementRollbackIntegrationTest {
 
     @Autowired
     private lateinit var outboxEventRepository: OutboxEventRepository
+
+    @Autowired
+    private lateinit var orderRecoveryAudits: OrderRecoveryAuditRepository
 
     @Autowired
     private lateinit var walletRepository: WalletRepository
@@ -198,6 +202,7 @@ class ExchangeSettlementRollbackIntegrationTest {
         exchangeLedgerRepository.deleteAll()
         completedOrderViewRepository.deleteAll()
         transactionRepository.deleteAll()
+        orderRecoveryAudits.deleteAll()
         outboxEventRepository.deleteAll()
         reservationRepository.deleteAll()
         exchangeOrderRepository.deleteAll()
@@ -352,6 +357,51 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `manual requeue requires super role and records reason and result`() {
+        val order = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "manual-recovery")
+        fun auth(userId: Long, type: UserType) = authentication(UsernamePasswordAuthenticationToken(
+            UserPrincipal(userId, "operator", type), null, listOf(SimpleGrantedAuthority("ROLE_${type.name}"))
+        ))
+        val request = post("/api/admin/orders/${order.id}/requeue")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"reason":"recover stalled order after review"}""")
+
+        mockMvc.perform(request.with(auth(USER_ID, UserType.GENERAL)))
+            .andExpect(status().isForbidden)
+        orderRecoveryAudits.count() shouldBe 0L
+
+        mockMvc.perform(post("/api/admin/orders/${order.id}/requeue")
+            .with(auth(COMPANY_USER_ID, UserType.SUPER))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"reason":"recover stalled order after review"}"""))
+            .andExpect(status().isAccepted)
+            .andExpect(jsonPath("$.result").value("QUEUED"))
+        orderRecoveryAudits.findAll().single().reason shouldBe "recover stalled order after review"
+        outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_ACCEPTED } shouldBe 2
+
+        exchangeOrderService.processQueuedOrder(order.id)
+        mockMvc.perform(post("/api/admin/orders/${order.id}/requeue")
+            .with(auth(COMPANY_USER_ID, UserType.SUPER))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"reason":"verify terminal order protection"}"""))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.result").value("TERMINAL_ORDER"))
+        orderRecoveryAudits.findAll().map { it.result }.toSet() shouldBe setOf("QUEUED", "TERMINAL_ORDER")
+        outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_ACCEPTED } shouldBe 2
+
+        val unsafe = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "missing-recovery-hold")
+        reservationRepository.deleteById(unsafe.id)
+        mockMvc.perform(post("/api/admin/orders/${unsafe.id}/requeue")
+            .with(auth(COMPANY_USER_ID, UserType.SUPER))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""{"reason":"investigate missing reservation"}"""))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.result").value("MISSING_RESERVATION"))
+        orderRecoveryAudits.findAll().any { it.orderId == unsafe.id && it.result == "MISSING_RESERVATION" } shouldBe true
+        outboxEventRepository.findAll().count { it.eventType == OutboxEventType.ORDER_ACCEPTED } shouldBe 3
+    }
+
+    @Test
     fun `out of order completion events produce the same read model`() {
         val first = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "projection-first")
         val second = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "projection-second")
@@ -461,6 +511,24 @@ class ExchangeSettlementRollbackIntegrationTest {
         journalLineRepository.deleteAll()
         journalRepository.deleteAll()
         journalReconciliationService.audit().issues.any { it.contains("has no journal") } shouldBe true
+    }
+
+    @Test
+    fun `reconciliation can be rerun without changing balances or journals`() {
+        val order = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "journal-repeat")
+        exchangeOrderService.processQueuedOrder(order.id)
+        val balances = balanceSnapshot()
+        val journalCount = journalRepository.count()
+        val lineCount = journalLineRepository.count()
+
+        val first = journalReconciliationService.audit()
+        val second = journalReconciliationService.audit()
+
+        first.balanced shouldBe true
+        second shouldBe first
+        balanceSnapshot() shouldBe balances
+        journalRepository.count() shouldBe journalCount
+        journalLineRepository.count() shouldBe lineCount
     }
 
     @Test
@@ -810,6 +878,58 @@ class ExchangeSettlementRollbackIntegrationTest {
     }
 
     @Test
+    fun `real sustained arrivals settle with one worker and complete journals`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        assumeTrue(System.getenv("RUN_LOAD_BASELINE_TESTS") == "true")
+        check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+        for (index in 1 until 20) insertExchangeUser(1000L + index, USER_KRW_BALANCE, USER_USD_BALANCE)
+        val producerPool = Executors.newSingleThreadExecutor()
+
+        try {
+            val startedAt = System.nanoTime()
+            val producer = producerPool.submit(Callable {
+                repeat(5) { wave ->
+                    runConcurrently(20) { index ->
+                        val userId = if (index == 0) USER_ID else 1000L + index
+                        exchangeOrderService.requestBuyOrder(userId, "USD", ORDER_AMOUNT, "steady-$userId-$wave")
+                    }.forEach { it.getOrThrow() }
+                    outboxEventPublisher.publishPendingOrderEvents()
+                    Thread.sleep(200)
+                }
+            })
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
+            while (exchangeOrderRepository.count() < 100L ||
+                exchangeOrderRepository.countByStatus(OrderStatus.SETTLED) < 100L) {
+                if (System.nanoTime() > deadline) error("Sustained load did not settle in 90 seconds")
+                if (producer.isDone) producer.get()
+                orderWorker.processQueue()
+                Thread.sleep(20)
+            }
+            producer.get()
+            val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+            val orders = exchangeOrderRepository.findAll()
+            val completionMs = orders.map {
+                Duration.between(requireNotNull(it.requestedAt), requireNotNull(it.completedAt)).toMillis()
+            }.sorted()
+
+            orders.size shouldBe 100
+            transactionRepository.count() shouldBe 200L
+            journalRepository.count() shouldBe 100L
+            journalReconciliationService.audit().balanced shouldBe true
+            val throughput = String.format(java.util.Locale.ROOT, "%.2f", 100_000.0 / elapsedMs)
+            println(
+                "LOAD_SUSTAINED orders=100 users=20 waves=5 elapsed_ms=$elapsedMs " +
+                    "orders_per_sec=$throughput completion_p50_ms=${completionMs[49]} " +
+                    "completion_p95_ms=${completionMs[94]} completion_max_ms=${completionMs.last()}"
+            )
+        } finally {
+            producerPool.shutdownNow()
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    @Test
     fun `real Redis lease rejects stale ACK and recovers deferred messages`() {
         assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
         check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
@@ -911,6 +1031,59 @@ class ExchangeSettlementRollbackIntegrationTest {
             exchangeLedgerRepository.count() shouldBe 2L
             redisOrderQueue.claim() shouldBe null
         } finally {
+            val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
+            if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
+        }
+    }
+
+    @Test
+    fun `real consumer process termination leaves a pending order recoverable`() {
+        assumeTrue(System.getenv("RUN_REAL_INFRA_TESTS") == "true")
+        check(redisTemplate.keys("*").orEmpty().isEmpty()) { "Redis DB 15 must be empty before the integration test" }
+
+        var consumer: Process? = null
+        try {
+            redisOrderQueue.claim() shouldBe null
+            val order = exchangeOrderService.requestBuyOrder(USER_ID, "USD", ORDER_AMOUNT, "killed-consumer")
+            val event = outboxEventRepository.findAll().single { it.eventType == OutboxEventType.ORDER_ACCEPTED }
+            redisOrderQueue.enqueue(event.id!!, order.id) shouldBe true
+
+            val probe = ProcessBuilder(
+                "powershell", "-NoProfile", "-Command",
+                "docker exec redis redis-cli -n 15 XREADGROUP GROUP order-settlement crash-consumer COUNT 1 STREAMS order:queue:stream '>'; Start-Sleep -Seconds 60"
+            ).redirectErrorStream(true).start()
+            consumer = probe
+
+            var pendingId: String? = null
+            repeat(200) {
+                if (pendingId == null) {
+                    pendingId = redisTemplate.opsForStream<String, String>()
+                        .pending("order:queue:stream", "order-settlement", org.springframework.data.domain.Range.unbounded<String>(), 1)
+                        .firstOrNull()?.idAsString
+                    if (pendingId == null) Thread.sleep(50)
+                }
+            }
+            if (pendingId == null) {
+                probe.destroyForcibly()
+                error("Consumer did not claim the order")
+            }
+            probe.destroyForcibly()
+            probe.waitFor(10, TimeUnit.SECONDS) shouldBe true
+
+            expireLease(requireNotNull(pendingId))
+            orderWorker.processQueue()
+            val retryAt = requireNotNull(exchangeOrderRepository.findById(order.id).orElseThrow().nextAttemptAt)
+            val waitMs = Duration.between(Instant.now(), retryAt).toMillis() + 100
+            if (waitMs > 0) Thread.sleep(waitMs)
+            orderWorker.processQueue()
+
+            exchangeOrderRepository.findById(order.id).orElseThrow().status shouldBe OrderStatus.SETTLED
+            transactionRepository.count() shouldBe 2L
+            journalRepository.count() shouldBe 1L
+            redisOrderQueue.claim() shouldBe null
+            println("REAL_CONSUMER_CRASH order_id=${order.id} replay=settled_once")
+        } finally {
+            consumer?.let { if (it.isAlive) it.destroyForcibly() }
             val testKeys = redisTemplate.keys("order:queue:*").orEmpty() + redisTemplate.keys("order:completion:*").orEmpty()
             if (testKeys.isNotEmpty()) redisTemplate.delete(testKeys)
         }

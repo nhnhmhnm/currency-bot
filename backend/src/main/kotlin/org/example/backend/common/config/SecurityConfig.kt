@@ -25,6 +25,7 @@ class SecurityConfig(
             .authorizeHttpRequests {
                 it.requestMatchers(HttpMethod.GET, "/api/exchange/rates").permitAll()
                 it.requestMatchers(HttpMethod.GET, "/api/exchange/arbitrage/terms").permitAll()
+                it.requestMatchers("/api/admin/**").hasRole("SUPER")
                 // 비인증 허용 경로
                 it.requestMatchers(
                     HttpMethod.POST,
